@@ -87,16 +87,14 @@ const PronunciationModuleWithPhrases = ({
     convertToWavOnStop: true
   });
 
-  // Initialize phrases with coverage sampling
+  // Initialize phrases with coverage sampling (long phrases only)
   useEffect(() => {
     const seed = generateSeed();
     console.log('[Pronunciation] Selecting phrases with coverage, seed:', seed);
     const phrasesData = pronunciationPhrasesBank.phrases as any[];
     const result = selectPhrasesWithCoverage(phrasesData, seed, {
-      '2w': 3,
-      '3-4w': 3,
-      '4-5w': 2,
-      '5-10w': 2
+      '5-10w': 4,
+      'sent': 8
     });
     console.log('[Pronunciation] Selected', result.phrases.length, 'phrases');
     console.log('[Pronunciation] Coverage:', result.coveragePercent + '%');
