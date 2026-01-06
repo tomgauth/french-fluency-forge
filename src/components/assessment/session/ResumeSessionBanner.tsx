@@ -35,7 +35,7 @@ export function ResumeSessionBanner({
     fluency: 'Fluency',
     confidence: 'Confidence',
     syntax: 'Syntax',
-    conversation: 'Conversation',
+    conversation: 'Speech Test',
     comprehension: 'Comprehension',
   };
 
@@ -117,4 +117,3 @@ export function ResumeSessionBanner({
     </Card>
   );
 }
-

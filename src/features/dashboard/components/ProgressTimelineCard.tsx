@@ -116,7 +116,7 @@ export function ProgressTimelineCard({
     fluency: 'Fluency',
     confidence: 'Confidence',
     syntax: 'Syntax',
-    conversation: 'Conversation',
+    conversation: 'Speech Test',
     comprehension: 'Comprehension',
     phrases_known_recall: 'My Phrases (Recall)',
     phrases_known_recognition: 'My Phrases (Recognition)',
@@ -243,7 +243,7 @@ export function ProgressTimelineCard({
                 <SelectItem value="fluency">Fluency</SelectItem>
                 <SelectItem value="confidence">Confidence</SelectItem>
                 <SelectItem value="syntax">Syntax</SelectItem>
-                <SelectItem value="conversation">Conversation</SelectItem>
+                <SelectItem value="conversation">Speech Test</SelectItem>
                 <SelectItem value="comprehension">Comprehension</SelectItem>
               </SelectContent>
             </Select>

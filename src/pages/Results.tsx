@@ -44,7 +44,7 @@ const SKILL_DESCRIPTIONS: Record<string, string> = {
   Fluency: "Speaking speed and naturalness measured in words per minute (WPM). Target: 80-150 WPM for conversational French.",
   Confidence: "Willingness to express opinions, take risks, and speak without excessive hesitation in French.",
   Syntax: "Grammatical accuracy including verb conjugation, gender agreement, and correct sentence structure.",
-  Conversation: "Ability to handle real-world dialogue, respond to unexpected situations, and adapt to misunderstandings.",
+  "Speech Test": "Ability to handle real-world dialogue, respond to unexpected situations, and adapt to misunderstandings.",
   Comprehension: "Understanding of natural spoken French at native speed, including informal speech and varied accents."
 };
 
@@ -167,18 +167,10 @@ const Results = () => {
           return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
         };
 
-        // Calculate combined confidence score (50% questionnaire + 50% speaking)
-        const speakingConfidence = getAvgScore("confidence");
+        // Confidence now comes exclusively from the questionnaire
         const questionnaireConfidence = questionnaireData?.normalized_score ?? null;
-        
-        let combinedConfidenceScore: number | null = null;
-        if (speakingConfidence !== null && questionnaireConfidence !== null) {
-          combinedConfidenceScore = Math.round((speakingConfidence + questionnaireConfidence) / 2);
-        } else if (speakingConfidence !== null) {
-          combinedConfidenceScore = speakingConfidence;
-        } else if (questionnaireConfidence !== null) {
-          combinedConfidenceScore = Math.round(questionnaireConfidence);
-        }
+        const combinedConfidenceScore =
+          questionnaireConfidence !== null ? Math.round(questionnaireConfidence) : null;
 
         // TODO: Fetch pronunciation scores when available
         const pronunciationScore: number | null = null;
@@ -261,11 +253,11 @@ const Results = () => {
       rawValue: sessionData.syntaxScore !== null ? `${sessionData.syntaxScore}/100` : undefined
     },
     { 
-      skill: "Conversation", 
+      skill: "Speech Test", 
       score: aiScoreToScale(sessionData.conversationScore), 
       fullMark: 10,
       available: sessionData.conversationScore !== null,
-      description: SKILL_DESCRIPTIONS.Conversation,
+      description: SKILL_DESCRIPTIONS["Speech Test"],
       rawValue: sessionData.conversationScore !== null ? `${sessionData.conversationScore}/100` : undefined
     }
   ];
@@ -551,7 +543,7 @@ const Results = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Conversation</span>
+                  <span className="text-muted-foreground">Speech Test</span>
                   <span className="text-foreground">
                     {sessionData.conversationScore !== null 
                       ? `${sessionData.conversationScore}/100` 

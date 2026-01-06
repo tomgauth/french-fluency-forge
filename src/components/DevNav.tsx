@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Bug, X, ChevronRight, ChevronDown, Mic, MessageSquare, Brain, BookOpen, Volume2, Headphones, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { Bug, X, ChevronRight, ChevronDown, Mic, Brain, Volume2, Headphones, PanelRightOpen, PanelRightClose } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Database } from "@/integrations/supabase/types";
 
 type SessionStatus = Database["public"]["Enums"]["session_status"];
-type AssessmentPhase = "pronunciation" | "fluency" | "confidence" | "syntax" | "conversation" | "comprehension";
+type AssessmentPhase = "pronunciation" | "comprehension" | "confidence" | "conversation";
 
 const mainRoutes = [
   { path: "/", label: "Home" },
@@ -33,7 +33,7 @@ const assessmentPhases: { status: SessionStatus; label: string }[] = [
   { status: "processing", label: "Processing" },
 ];
 
-// 6 Dimensions with their sub-tests
+// 4 Dimensions with their sub-tests
 const dimensions: {
   id: AssessmentPhase;
   label: string;
@@ -56,17 +56,6 @@ const dimensions: {
     ],
   },
   {
-    id: "fluency",
-    label: "Fluency",
-    icon: <MessageSquare className="h-4 w-4" />,
-    subtests: [
-      { id: "intro", label: "Intro & Instructions" },
-      { id: "fluPic-01", label: "Picture 1: Messy room" },
-      { id: "fluPic-02", label: "Picture 2: Kitchen" },
-      { id: "fluPic-03", label: "Picture 3: Argument" },
-    ],
-  },
-  {
     id: "confidence",
     label: "Confidence",
     icon: <Brain className="h-4 w-4" />,
@@ -78,23 +67,14 @@ const dimensions: {
     ],
   },
   {
-    id: "syntax",
-    label: "Syntax",
-    icon: <BookOpen className="h-4 w-4" />,
-    subtests: [
-      { id: "E1", label: "E1: Quick Answer (15s)" },
-      { id: "E2", label: "E2: Structured Plan (30s)" },
-      { id: "E3", label: "E3: Mini-Story (60s)" },
-    ],
-  },
-  {
     id: "conversation",
-    label: "Conversation",
+    label: "Speech Test",
     icon: <Volume2 className="h-4 w-4" />,
     subtests: [
-      { id: "C1", label: "C1: Restaurant order" },
-      { id: "C2", label: "C2: Neighbor noise" },
-      { id: "C3", label: "C3: Schedule change" },
+      { id: "prompt", label: "Open-ended prompt (20s–2m)" },
+      { id: "fluency", label: "Fluency (WPM)" },
+      { id: "syntax", label: "Syntax scoring" },
+      { id: "conversation", label: "Conversation patterns" },
     ],
   },
   {

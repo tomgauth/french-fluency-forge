@@ -63,7 +63,7 @@ export function RadarCard({ baseline, current }: RadarCardProps) {
       fullMark: 100,
     },
     {
-      dimension: 'Conversation',
+      dimension: 'Speech Test',
       baseline: baseline?.dimensions.conversation || 0,
       current: current.dimensions.conversation,
       fullMark: 100,
@@ -115,4 +115,3 @@ export function RadarCard({ baseline, current }: RadarCardProps) {
     </Card>
   );
 }
-

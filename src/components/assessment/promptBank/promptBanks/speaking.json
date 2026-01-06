@@ -1,0 +1,61 @@
+{
+  "version": "1.0.0",
+  "module": "speaking",
+  "prompts": [
+    {
+      "id": "speaking-meaningful-goal",
+      "type": "question",
+      "tags": ["motivation", "future", "personal"],
+      "difficulty": 2,
+      "cefr": "A2",
+      "payload": {
+        "question": "Parlez d’un objectif important pour vous cette année. Pourquoi est-ce important ?"
+      }
+    },
+    {
+      "id": "speaking-best-moment",
+      "type": "question",
+      "tags": ["storytelling", "positive", "personal"],
+      "difficulty": 2,
+      "cefr": "A2",
+      "payload": {
+        "question": "Racontez un moment récent où vous étiez fier/fière de vous."
+      }
+    },
+    {
+      "id": "speaking-challenge",
+      "type": "question",
+      "tags": ["challenge", "reflection"],
+      "difficulty": 3,
+      "cefr": "B1",
+      "payload": {
+        "question": "Décrivez un défi que vous avez surmonté. Qu’est-ce que cela vous a appris ?"
+      }
+    },
+    {
+      "id": "speaking-ideal-day",
+      "type": "question",
+      "tags": ["imagination", "routine"],
+      "difficulty": 2,
+      "cefr": "A2",
+      "payload": {
+        "question": "Si vous pouviez organiser votre journée idéale, à quoi ressemblerait-elle ?"
+      }
+    },
+    {
+      "id": "speaking-advice",
+      "type": "question",
+      "tags": ["advice", "experience"],
+      "difficulty": 3,
+      "cefr": "B1",
+      "payload": {
+        "question": "Quel conseil donneriez-vous à quelqu’un qui veut apprendre une nouvelle compétence ?"
+      }
+    }
+  ],
+  "meta": {
+    "description": "Motivating open-ended speaking questions",
+    "lastUpdated": "2024-06-01",
+    "author": "Fluency Forge"
+  }
+}

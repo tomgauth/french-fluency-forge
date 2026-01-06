@@ -88,7 +88,7 @@ export function ConfidenceQuestionnaire({ sessionId, onComplete }: ConfidenceQue
           </CardHeader>
           <CardContent className="space-y-6">
             <p className="text-center text-muted-foreground">
-              Before the speaking assessment, we'll ask you 8 quick questions about how you typically feel when speaking French.
+              We'll ask you 8 quick questions about how you typically feel when speaking French.
             </p>
             
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex gap-3">
@@ -164,7 +164,7 @@ export function ConfidenceQuestionnaire({ sessionId, onComplete }: ConfidenceQue
               disabled={!hasAnswer || isSubmitting}
               className="gap-2"
             >
-              {isSubmitting ? 'Saving...' : isLastQuestion ? 'Continue to Speaking' : 'Next'}
+              {isSubmitting ? 'Saving...' : isLastQuestion ? 'Finish Confidence' : 'Next'}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>

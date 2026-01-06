@@ -9,6 +9,7 @@ export type ModuleType =
   | 'confidence' 
   | 'syntax' 
   | 'conversation' 
+  | 'speaking' 
   | 'comprehension';
 
 export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
@@ -72,6 +73,15 @@ export interface ConversationPrompt extends PromptBase {
   };
 }
 
+// Speaking prompts (open-ended question)
+export interface SpeakingPrompt extends PromptBase {
+  type: 'question';
+  payload: {
+    question: string;
+    context?: string;
+  };
+}
+
 // Comprehension prompts (multi-select listening)
 export interface ComprehensionPrompt extends PromptBase {
   type: 'listen_multi_select';
@@ -101,6 +111,7 @@ export type Prompt =
   | ConfidencePrompt 
   | SyntaxPrompt 
   | ConversationPrompt 
+  | SpeakingPrompt 
   | ComprehensionPrompt;
 
 export interface PromptBank {
@@ -117,4 +128,3 @@ export interface PromptBank {
 export interface PromptSelection {
   [module: string]: string[]; // module -> array of prompt IDs
 }
-

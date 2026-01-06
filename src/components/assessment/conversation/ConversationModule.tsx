@@ -1,554 +1,513 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  MessagesSquare, 
-  ArrowRight, 
-  Mic, 
-  Square, 
-  Volume2, 
-  Check,
-  Loader2,
-  Send,
-  User,
-  Bot
-} from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { AlertCircle, Check, Loader2, Mic, RotateCcw, Square } from 'lucide-react';
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { useAudioRecorder, formatTime } from '@/hooks/useAudioRecorder';
-import { getRandomScenario, type ConversationScenario } from './conversationScenarios';
+import { getPrompts } from '@/components/assessment/promptBank/loadPromptBank';
+import type { SpeakingPrompt } from '@/components/assessment/promptBank/types';
 
 interface ConversationModuleProps {
   sessionId: string;
   onComplete: () => void;
 }
 
-interface ConversationMessage {
-  role: 'agent' | 'user';
-  content: string;
+type ProcessingStep =
+  | 'idle'
+  | 'uploading'
+  | 'analyzing_fluency'
+  | 'analyzing_syntax'
+  | 'analyzing_conversation'
+  | 'complete'
+  | 'error';
+
+interface DebugLogEntry {
+  timestamp: string;
+  step: ProcessingStep;
+  message: string;
 }
 
-interface ScoringResult {
-  overall: number;
-  subs: {
-    comprehension_task: { score: number; evidence: string[] };
-    repair: { score: number; evidence: string[] };
-    flow: { score: number; evidence: string[] };
-  };
-  flags: string[];
-  confidence: number;
-}
-
-type ConversationPhase = 'intro' | 'chat' | 'scoring' | 'complete';
-
-const MIN_TURNS = 4; // Minimum user turns before allowing end
-const MAX_TURNS = 8; // Maximum user turns
+const MAX_DURATION_SECONDS = 120;
+const MIN_DURATION_SECONDS = 20;
+const AUDIO_BUCKET = 'speech-test-audio';
 
 export function ConversationModule({ sessionId, onComplete }: ConversationModuleProps) {
   const { user } = useAuth();
-  const [phase, setPhase] = useState<ConversationPhase>('intro');
-  const [scenario, setScenario] = useState<ConversationScenario | null>(null);
-  const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [userTurnCount, setUserTurnCount] = useState(0);
-  const [isAgentTyping, setIsAgentTyping] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
-  const [recordingId, setRecordingId] = useState<string | null>(null);
-  
-  // Dev mode states
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [processingStep, setProcessingStep] = useState<ProcessingStep>('idle');
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
+  const [audioPath, setAudioPath] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<string>('');
+
   const isDev = import.meta.env.DEV || window.location.pathname.startsWith('/dev');
-  const [useTextInput, setUseTextInput] = useState(false);
-  const [devTextInput, setDevTextInput] = useState('');
-  
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  
-  const { 
-    isRecording, 
-    recordingTime, 
-    audioBlob, 
-    startRecording, 
-    stopRecording, 
-    resetRecording 
-  } = useAudioRecorder({ maxDuration: 30 });
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+  const prompt = useMemo(() => {
+    const prompts = getPrompts('speaking') as SpeakingPrompt[];
+    if (prompts.length === 0) {
+      return {
+        id: 'speaking-fallback',
+        type: 'question',
+        tags: ['fallback'],
+        difficulty: 1,
+        payload: {
+          question: 'Parlez de quelque chose que vous aimez faire pendant votre temps libre.',
+        },
+      } as SpeakingPrompt;
     }
-  }, [messages]);
+    return prompts[Math.floor(Math.random() * prompts.length)];
+  }, []);
 
-  // Start conversation
-  const handleStart = useCallback(async () => {
-    const selectedScenario = getRandomScenario();
-    setScenario(selectedScenario);
-    
-    // Create recording entry for storing the full conversation
-    if (user) {
-      const { data, error } = await supabase
+  const {
+    isRecording,
+    recordingTime,
+    audioBlob,
+    error: recordingError,
+    startRecording,
+    stopRecording,
+    resetRecording,
+  } = useAudioRecorder({ maxDuration: MAX_DURATION_SECONDS });
+
+  const remainingTime = Math.max(0, MAX_DURATION_SECONDS - recordingTime);
+  const progress = (recordingTime / MAX_DURATION_SECONDS) * 100;
+
+  const addDebugLog = (step: ProcessingStep, message: string) => {
+    if (!isDev) return;
+    setDebugLogs((prev) => [
+      {
+        timestamp: new Date().toISOString(),
+        step,
+        message,
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleReset = () => {
+    resetRecording();
+    setErrorMessage(null);
+    setProcessingStep('idle');
+    setAudioPath(null);
+    setTranscript('');
+  };
+
+  const convertBlobToBase64 = async (blob: Blob) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
+
+  const parseErrorMessage = (rawError: string) => {
+    try {
+      const parsed = JSON.parse(rawError);
+      if (parsed?.error) return parsed.error as string;
+      return rawError;
+    } catch {
+      return rawError;
+    }
+  };
+
+  const uploadAudio = async (blob: Blob) => {
+    if (!user) throw new Error('You must be logged in.');
+    if (audioPath) return audioPath;
+
+    const path = `speech-test/${sessionId}/${prompt.id}-${Date.now()}.webm`;
+    addDebugLog('uploading', `Uploading audio to ${AUDIO_BUCKET}/${path}`);
+
+    const { error } = await supabase.storage.from(AUDIO_BUCKET).upload(path, blob, {
+      contentType: blob.type || 'audio/webm',
+      upsert: true,
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Failed to upload audio.');
+    }
+
+    setAudioPath(path);
+    return path;
+  };
+
+  const getNextAttemptNumber = async (table: 'fluency_recordings' | 'skill_recordings', moduleType?: string) => {
+    if (!user) return 1;
+
+    let query = supabase
+      .from(table)
+      .select('attempt_number')
+      .eq('session_id', sessionId)
+      .eq('item_id', prompt.id)
+      .order('attempt_number', { ascending: false })
+      .limit(1);
+
+    if (table === 'skill_recordings' && moduleType) {
+      query = query.eq('module_type', moduleType);
+    }
+
+    const { data } = await query;
+    if (data && data.length > 0) {
+      return data[0].attempt_number + 1;
+    }
+
+    return 1;
+  };
+
+  const analyzeSkillWithTranscript = async (
+    moduleType: 'syntax' | 'conversation',
+    transcriptText: string,
+    storagePath: string
+  ) => {
+    if (!user) return;
+
+    const attemptNumber = await getNextAttemptNumber('skill_recordings', moduleType);
+
+    await supabase
+      .from('skill_recordings')
+      .update({ superseded: true, used_for_scoring: false })
+      .eq('session_id', sessionId)
+      .eq('item_id', prompt.id)
+      .eq('module_type', moduleType)
+      .eq('used_for_scoring', true);
+
+    const { data: recording, error: insertError } = await supabase
+      .from('skill_recordings')
+      .insert({
+        session_id: sessionId,
+        user_id: user.id,
+        module_type: moduleType,
+        item_id: prompt.id,
+        attempt_number: attemptNumber,
+        duration_seconds: recordingTime,
+        status: 'processing',
+        transcript: transcriptText,
+        word_count: transcriptText.split(/\s+/).filter(Boolean).length,
+        used_for_scoring: true,
+        superseded: false,
+        audio_storage_path: storagePath,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    addDebugLog(moduleType === 'syntax' ? 'analyzing_syntax' : 'analyzing_conversation', 'Calling analyze-skill');
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-skill`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          transcript: transcriptText,
+          moduleType,
+          itemId: prompt.id,
+          promptText: prompt.payload.question,
+          recordingId: recording.id,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = parseErrorMessage(await response.text());
+      await supabase
         .from('skill_recordings')
+        .update({ status: 'error', error_message: errorText })
+        .eq('id', recording.id);
+
+      throw new Error(errorText || 'Failed to analyze skill');
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!audioBlob || !user) {
+      toast.error('Please record your response first.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      setProcessingStep('uploading');
+      const storagePath = await uploadAudio(audioBlob);
+
+      const base64Audio = await convertBlobToBase64(audioBlob);
+      const fluencyAttempt = await getNextAttemptNumber('fluency_recordings');
+
+      await supabase
+        .from('fluency_recordings')
+        .update({ superseded: true, used_for_scoring: false })
+        .eq('session_id', sessionId)
+        .eq('item_id', prompt.id)
+        .eq('used_for_scoring', true);
+
+      const { data: fluencyRecording, error: fluencyInsertError } = await supabase
+        .from('fluency_recordings')
         .insert({
           session_id: sessionId,
           user_id: user.id,
-          item_id: selectedScenario.id,
-          module_type: 'conversation',
-          status: 'pending'
+          item_id: prompt.id,
+          attempt_number: fluencyAttempt,
+          status: 'processing',
+          duration_seconds: recordingTime,
+          used_for_scoring: true,
+          superseded: false,
+          audio_storage_path: storagePath,
         })
         .select('id')
         .single();
-      
-      if (!error && data) {
-        setRecordingId(data.id);
-      }
-    }
-    
-    // Add agent's starter turn
-    setMessages([{
-      role: 'agent',
-      content: selectedScenario.starterAgentTurn
-    }]);
-    
-    setPhase('chat');
-  }, [sessionId, user]);
 
-  // Process user's audio/text input
-  const processUserInput = async (transcript: string) => {
-    if (!scenario || !transcript.trim()) return;
-    
-    // Add user message
-    const newMessages: ConversationMessage[] = [
-      ...messages,
-      { role: 'user', content: transcript }
-    ];
-    setMessages(newMessages);
-    setUserTurnCount(prev => prev + 1);
-    resetRecording();
-    
-    // Check if conversation should end
-    if (userTurnCount + 1 >= MAX_TURNS) {
-      // End conversation and score
-      handleEndConversation(newMessages);
-      return;
-    }
-    
-    // Get agent response
-    setIsAgentTyping(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('conversation-agent', {
-        body: {
-          action: 'agent_turn',
-          conversationHistory: newMessages,
-          scenario: {
-            title: scenario.title,
-            goal: scenario.goal,
-            slots: scenario.slots,
-            persona_id: scenario.persona_id,
-            tier: scenario.tier,
-            planned_repair_events: scenario.planned_repair_events,
-            required_slots: scenario.required_slots,
-            end_conditions: scenario.end_conditions,
-            context: scenario.context
+      if (fluencyInsertError) {
+        throw fluencyInsertError;
+      }
+
+      setProcessingStep('analyzing_fluency');
+      addDebugLog('analyzing_fluency', 'Calling analyze-fluency');
+
+      const fluencyResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-fluency`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          turnNumber: newMessages.length
+          body: JSON.stringify({
+            audio: base64Audio,
+            itemId: prompt.id,
+            recordingDuration: recordingTime,
+          }),
         }
-      });
-      
-      if (error) throw error;
-      
-      if (data?.agentResponse) {
-        setMessages(prev => [...prev, { role: 'agent', content: data.agentResponse }]);
+      );
+
+      if (!fluencyResponse.ok) {
+        const errorText = parseErrorMessage(await fluencyResponse.text());
+        await supabase
+          .from('fluency_recordings')
+          .update({ status: 'error', error_message: errorText })
+          .eq('id', fluencyRecording.id);
+        throw new Error(errorText || 'Failed to analyze fluency');
       }
-    } catch (err) {
-      console.error('Error getting agent response:', err);
-      toast.error('Failed to get response');
+
+      const fluencyResult = await fluencyResponse.json();
+
+      await supabase
+        .from('fluency_recordings')
+        .update({
+          status: 'completed',
+          transcript: fluencyResult.transcript,
+          word_count: fluencyResult.wordCount,
+          wpm: fluencyResult.articulationWpm ?? fluencyResult.wpm,
+          pause_count: fluencyResult.longPauseCount ?? null,
+          total_pause_duration: fluencyResult.totalPauseDuration ?? null,
+          completed_at: new Date().toISOString(),
+          audio_storage_path: storagePath,
+        })
+        .eq('id', fluencyRecording.id);
+
+      const nextTranscript = (fluencyResult.transcript || '').trim();
+      setTranscript(nextTranscript);
+
+      if (!nextTranscript) {
+        throw new Error('Transcription failed. Please retry analysis.');
+      }
+
+      setProcessingStep('analyzing_syntax');
+      await analyzeSkillWithTranscript('syntax', nextTranscript, storagePath);
+
+      setProcessingStep('analyzing_conversation');
+      await analyzeSkillWithTranscript('conversation', nextTranscript, storagePath);
+
+      setProcessingStep('complete');
+      setHasSubmitted(true);
+      toast.success('Recording analyzed successfully.');
+      onComplete();
+    } catch (error) {
+      console.error('Speaking assessment error:', error);
+      setProcessingStep('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
+      toast.error('Failed to analyze your recording.');
     } finally {
-      setIsAgentTyping(false);
+      setIsSubmitting(false);
     }
   };
 
-  // Handle audio blob
-  useEffect(() => {
-    if (audioBlob && !isTranscribing) {
-      handleTranscribeAudio(audioBlob);
-    }
-  }, [audioBlob]);
-
-  const handleTranscribeAudio = async (blob: Blob) => {
-    setIsTranscribing(true);
-    try {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-      });
-      reader.readAsDataURL(blob);
-      const audioBase64 = await base64Promise;
-      
-      const { data, error } = await supabase.functions.invoke('conversation-agent', {
-        body: {
-          action: 'transcribe',
-          audioBase64
-        }
-      });
-      
-      if (error) throw error;
-      
-      if (data?.transcript) {
-        await processUserInput(data.transcript);
-      }
-    } catch (err) {
-      console.error('Error transcribing:', err);
-      toast.error('Failed to transcribe audio');
-    } finally {
-      setIsTranscribing(false);
-    }
+  const processingLabelMap: Record<ProcessingStep, string> = {
+    idle: 'Ready',
+    uploading: 'Uploading audio',
+    analyzing_fluency: 'Analyzing fluency',
+    analyzing_syntax: 'Analyzing syntax',
+    analyzing_conversation: 'Analyzing conversation',
+    complete: 'Complete',
+    error: 'Error',
   };
 
-  const handleTextSubmit = async () => {
-    if (!devTextInput.trim()) return;
-    const text = devTextInput;
-    setDevTextInput('');
-    await processUserInput(text);
-  };
+  const isProcessing = ['uploading', 'analyzing_fluency', 'analyzing_syntax', 'analyzing_conversation'].includes(processingStep);
 
-  const handleEndConversation = async (finalMessages?: ConversationMessage[]) => {
-    const messagesToScore = finalMessages || messages;
-    if (!scenario || !recordingId) return;
-    
-    setPhase('scoring');
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('conversation-agent', {
-        body: {
-          action: 'score',
-          conversationHistory: messagesToScore,
-          scenario: {
-            title: scenario.title,
-            goal: scenario.goal,
-            slots: scenario.slots
-          },
-          recordingId
-        }
-      });
-      
-      if (error) throw error;
-      
-      if (data?.scoring) {
-        setScoringResult(data.scoring);
-        setPhase('complete');
-      }
-    } catch (err) {
-      console.error('Error scoring:', err);
-      toast.error('Failed to score conversation');
-      setPhase('complete');
-    }
-  };
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <Card className="border-primary/20">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Speaking Assessment</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Speak as much as you can. Aim for 20 seconds to 2 minutes.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="rounded-lg border border-border bg-muted/30 p-5">
+            <p className="text-sm uppercase tracking-wide text-muted-foreground mb-2">Prompt</p>
+            <p className="text-lg font-medium text-foreground">{prompt.payload.question}</p>
+            {prompt.payload.context && (
+              <p className="text-sm text-muted-foreground mt-2">{prompt.payload.context}</p>
+            )}
+          </div>
 
-  const handleComplete = async () => {
-    // Lock module
-    await supabase
-      .from('assessment_sessions')
-      .update({ 
-        conversation_locked: true, 
-        conversation_locked_at: new Date().toISOString() 
-      })
-      .eq('id', sessionId);
-    
-    onComplete();
-  };
-
-  // Intro screen
-  if (phase === 'intro') {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <Card className="border-primary/20">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-              <MessagesSquare className="h-8 w-8 text-primary" />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Speaking time</span>
+              <span>{recordingTime}s / {MAX_DURATION_SECONDS}s</span>
             </div>
-            <CardTitle className="text-2xl">Conversation Practice</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <p className="text-center text-muted-foreground">
-              Have a real conversation with an AI partner in French. You'll be given a scenario and need to communicate naturally to achieve a goal.
-            </p>
-            
-            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-              <h4 className="font-medium">What we're assessing:</h4>
-              <ul className="text-sm text-muted-foreground space-y-2">
-                <li>• <strong>Comprehension</strong> — Did you understand and stay on topic?</li>
-                <li>• <strong>Repair Strategies</strong> — How you handle confusion</li>
-                <li>• <strong>Conversational Flow</strong> — Natural back-and-forth</li>
-              </ul>
-            </div>
-
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 space-y-2">
-              <p className="text-sm text-green-700 dark:text-green-400 font-medium">
-                Useful phrases if you don't understand:
+            <Progress value={progress} className="h-2" />
+            {isRecording && (
+              <p className="text-xs text-muted-foreground">
+                Keep going! Longer answers help us measure fluency and structure.
               </p>
-              <ul className="text-sm text-green-700 dark:text-green-400 space-y-1">
-                <li>• "Pardon, vous voulez dire que… ?"</li>
-                <li>• "Vous pouvez répéter, s'il vous plaît ?"</li>
-                <li>• "Je n'ai pas compris la dernière partie."</li>
-              </ul>
-            </div>
+            )}
+          </div>
 
-            <div className="text-center pt-4">
-              <Button size="lg" onClick={handleStart} className="gap-2">
-                Start Conversation
-                <ArrowRight className="h-5 w-5" />
+          {(recordingError || errorMessage) && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 flex items-start gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 mt-0.5" />
+              <span>{recordingError || errorMessage}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col items-center gap-4">
+            {!isRecording && !audioBlob && (
+              <Button size="lg" className="h-16 w-16 rounded-full" onClick={startRecording} disabled={isSubmitting || isProcessing}>
+                <Mic className="h-6 w-6" />
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+            )}
 
-  // Chat interface
-  if (phase === 'chat') {
-    const canEnd = userTurnCount >= MIN_TURNS;
-    
-    return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <Badge variant="outline" className="gap-1 mb-2">
-              <MessagesSquare className="h-3 w-3" />
-              {scenario?.title}
-            </Badge>
-            <p className="text-sm text-muted-foreground">{scenario?.goal}</p>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Turn {userTurnCount}/{MAX_TURNS}
-          </div>
-        </div>
+            {isRecording && (
+              <Button
+                size="lg"
+                variant="destructive"
+                className="h-16 w-16 rounded-full animate-pulse"
+                onClick={stopRecording}
+                disabled={isSubmitting}
+              >
+                <Square className="h-6 w-6" />
+              </Button>
+            )}
 
-        {/* Dev mode toggle */}
-        {isDev && (
-          <Card className="border-amber-500/30 bg-amber-500/5">
-            <CardContent className="py-3">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="text-input"
-                    checked={useTextInput}
-                    onCheckedChange={setUseTextInput}
-                  />
-                  <Label htmlFor="text-input" className="text-xs">Text input</Label>
-                </div>
-                <Badge variant="outline" className="text-xs">DEV</Badge>
+            {!isRecording && audioBlob && (
+              <div className="flex items-center gap-3">
+                <Button variant="outline" onClick={handleReset} className="gap-2" disabled={isSubmitting || isProcessing}>
+                  <RotateCcw className="h-4 w-4" />
+                  Record again
+                </Button>
+                <Button onClick={handleSubmit} disabled={isSubmitting || isProcessing} className="gap-2">
+                  {isSubmitting ? 'Analyzing...' : 'Submit recording'}
+                  <Check className="h-4 w-4" />
+                </Button>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
 
-        {/* Chat messages */}
-        <Card className="h-[400px] flex flex-col">
-          <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-            <div className="space-y-4">
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                    msg.role === 'agent' ? 'bg-primary/10' : 'bg-muted'
-                  }`}>
-                    {msg.role === 'agent' ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
-                  </div>
-                  <div className={`rounded-lg px-4 py-2 max-w-[80%] ${
-                    msg.role === 'agent' 
-                      ? 'bg-muted' 
-                      : 'bg-primary text-primary-foreground'
-                  }`}>
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              
-              {isAgentTyping && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center bg-primary/10">
-                    <Bot className="h-4 w-4" />
-                  </div>
-                  <div className="bg-muted rounded-lg px-4 py-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
+            {!isRecording && audioBlob && recordingTime < MIN_DURATION_SECONDS && (
+              <p className="text-xs text-muted-foreground">
+                We recommend at least {MIN_DURATION_SECONDS} seconds for accurate scoring.
+              </p>
+            )}
+
+            {!audioBlob && (
+              <p className="text-sm text-muted-foreground">
+                Press the microphone to start recording.
+              </p>
+            )}
+          </div>
+
+          {processingStep !== 'idle' && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                ) : (
+                  <Check className="h-4 w-4 text-primary" />
+                )}
+                <span className="font-medium">{processingLabelMap[processingStep]}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {processingStep === 'uploading' && 'Saving your audio securely so you can retry if needed.'}
+                {processingStep === 'analyzing_fluency' && 'Calculating words per minute and pauses.'}
+                {processingStep === 'analyzing_syntax' && 'Scoring your syntax and structure.'}
+                {processingStep === 'analyzing_conversation' && 'Evaluating conversation clarity and flow.'}
+                {processingStep === 'complete' && 'Processing complete. Redirecting to results.'}
+                {processingStep === 'error' && 'Something went wrong. You can retry analysis without re-recording.'}
+              </div>
+              {processingStep === 'error' && audioBlob && (
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={handleSubmit} disabled={isSubmitting}>
+                    Retry analysis
+                  </Button>
                 </div>
               )}
             </div>
-          </ScrollArea>
-          
-          {/* Input area */}
-          <div className="border-t p-4 space-y-3">
-            {isTranscribing ? (
-              <div className="flex items-center justify-center gap-2 py-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">Transcribing...</span>
-              </div>
-            ) : isDev && useTextInput ? (
-              <div className="flex gap-2">
-                <Textarea
-                  placeholder="Type in French..."
-                  value={devTextInput}
-                  onChange={(e) => setDevTextInput(e.target.value)}
-                  className="min-h-[60px]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleTextSubmit();
-                    }
-                  }}
-                />
-                <Button 
-                  onClick={handleTextSubmit}
-                  disabled={!devTextInput.trim() || isAgentTyping}
-                  size="icon"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-4">
-                {!isRecording ? (
-                  <Button 
-                    size="lg" 
-                    onClick={startRecording}
-                    disabled={isAgentTyping}
-                    className="gap-2"
-                  >
-                    <Mic className="h-5 w-5" />
-                    Record Response
-                  </Button>
-                ) : (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                      <span className="font-mono">{formatTime(recordingTime)}</span>
-                    </div>
-                    <Button 
-                      variant="destructive"
-                      onClick={stopRecording}
-                      className="gap-2"
-                    >
-                      <Square className="h-4 w-4" />
-                      Stop
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {canEnd && !isRecording && (
-              <div className="text-center">
-                <Button 
-                  variant="outline" 
-                  onClick={() => handleEndConversation()}
-                  disabled={isAgentTyping || isTranscribing}
-                >
-                  End Conversation & Get Score
-                </Button>
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
-    );
-  }
+          )}
+        </CardContent>
+      </Card>
 
-  // Scoring state
-  if (phase === 'scoring') {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <Card className="text-center py-12">
-          <CardContent className="space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-            <p className="text-lg">Evaluating your conversation...</p>
+      {hasSubmitted && (
+        <Card className="border-primary/30">
+          <CardContent className="p-6 text-center text-sm text-muted-foreground">
+            Processing complete. Redirecting to results...
           </CardContent>
         </Card>
-      </div>
-    );
-  }
+      )}
 
-  // Complete state
-  if (phase === 'complete') {
-    return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        <Card>
-          <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-              <Check className="h-8 w-8 text-primary" />
-            </div>
-            <CardTitle className="text-2xl">Conversation Complete!</CardTitle>
+      <Card className="border-border/40">
+        <CardContent className="p-4 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground mb-2">We evaluate:</p>
+          <ul className="space-y-1">
+            <li>• Fluency (words per minute)</li>
+            <li>• Syntax and sentence structure</li>
+            <li>• Conversation skills and clarity</li>
+          </ul>
+        </CardContent>
+      </Card>
+
+      {isDev && debugLogs.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardHeader>
+            <CardTitle className="text-sm uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              Speech Test Debug Log
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {scoringResult && (
-              <>
-                <div className="flex items-center justify-between p-4 bg-primary/10 rounded-lg">
-                  <span className="font-medium text-lg">Overall Score</span>
-                  <Badge variant="default" className="text-xl px-4 py-1">
-                    {scoringResult.overall}/100
-                  </Badge>
-                </div>
-                
-                <div className="space-y-3">
-                  <h4 className="font-medium">Score Breakdown:</h4>
-                  <div className="grid gap-2">
-                    <div className="flex justify-between p-3 bg-muted/30 rounded-lg">
-                      <span>Comprehension & Task</span>
-                      <span className="font-medium">{scoringResult.subs.comprehension_task.score}/45</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-muted/30 rounded-lg">
-                      <span>Repair Strategies</span>
-                      <span className="font-medium">{scoringResult.subs.repair.score}/30</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-muted/30 rounded-lg">
-                      <span>Conversational Flow</span>
-                      <span className="font-medium">{scoringResult.subs.flow.score}/25</span>
-                    </div>
-                  </div>
-                </div>
-
-                {isDev && (
-                  <div className="p-4 bg-amber-500/10 rounded-lg text-xs space-y-2">
-                    <div className="font-medium">Dev Details:</div>
-                    <div><strong>Flags:</strong> {scoringResult.flags.length > 0 ? scoringResult.flags.join(', ') : 'None'}</div>
-                    <div><strong>Confidence:</strong> {(scoringResult.confidence * 100).toFixed(0)}%</div>
-                    <div><strong>Evidence:</strong></div>
-                    <ul className="ml-4 space-y-1">
-                      {scoringResult.subs.comprehension_task.evidence.map((e, i) => (
-                        <li key={i}>📝 {e}</li>
-                      ))}
-                      {scoringResult.subs.repair.evidence.map((e, i) => (
-                        <li key={i}>🔧 {e}</li>
-                      ))}
-                      {scoringResult.subs.flow.evidence.map((e, i) => (
-                        <li key={i}>💬 {e}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            )}
-            
-            <div className="text-center pt-4">
-              <Button size="lg" onClick={handleComplete} className="gap-2">
-                Continue
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-            </div>
+          <CardContent className="space-y-2 text-xs text-amber-700 dark:text-amber-300">
+            {debugLogs.map((log, index) => (
+              <div key={`${log.timestamp}-${index}`}>
+                <span className="font-semibold">[{log.step}]</span> {log.message}
+              </div>
+            ))}
           </CardContent>
         </Card>
-      </div>
-    );
-  }
+      )}
 
-  return null;
+      <div className="text-xs text-muted-foreground text-center">
+        {remainingTime > 0 ? `Time remaining: ${remainingTime}s` : 'Recording limit reached.'}
+      </div>
+    </div>
+  );
 }

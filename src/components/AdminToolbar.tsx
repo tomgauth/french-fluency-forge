@@ -32,9 +32,9 @@ import { Badge } from '@/components/ui/badge';
 type SessionStatus = 'intake' | 'consent' | 'quiz' | 'mic_check' | 'assessment' | 'processing' | 'completed';
 // 4 assessment modules:
 // A. Pronunciation - pronunciation exercises
-// B. Comprehension - listening comprehension  
-// C. Confidence - confidence questionnaire + phone call
-// D. Conversation - conversation-agent that evaluates fluency, confidence, conversation and syntax
+// B. Comprehension - listening comprehension
+// C. Confidence - confidence questionnaire only
+// D. Speech test - open-ended prompt for fluency, syntax, conversation skills
 type AssessmentPhase = 'pronunciation' | 'comprehension' | 'confidence' | 'conversation';
 
 const STATUS_OPTIONS: { value: SessionStatus; label: string }[] = [
@@ -51,7 +51,7 @@ const MODULE_OPTIONS: { value: AssessmentPhase; label: string; icon: string }[] 
   { value: 'pronunciation', label: 'Pronunciation', icon: '🗣️' },
   { value: 'comprehension', label: 'Comprehension', icon: '👂' },
   { value: 'confidence', label: 'Confidence', icon: '🧠' },
-  { value: 'conversation', label: 'Conversation', icon: '🎭' },
+  { value: 'conversation', label: 'Speech Test', icon: '🎙️' },
 ];
 
 export function AdminToolbar() {
@@ -270,4 +270,3 @@ export function AdminToolbar() {
     </div>
   );
 }
-

@@ -162,7 +162,7 @@ export function GoalDialog({ open, onOpenChange, goal, onSave }: GoalDialogProps
                     <SelectItem value="fluency">Fluency</SelectItem>
                     <SelectItem value="confidence">Confidence</SelectItem>
                     <SelectItem value="syntax">Syntax</SelectItem>
-                    <SelectItem value="conversation">Conversation</SelectItem>
+                    <SelectItem value="conversation">Speech Test</SelectItem>
                     <SelectItem value="comprehension">Comprehension</SelectItem>
                   </SelectContent>
                 </Select>
@@ -265,4 +265,3 @@ export function GoalDialog({ open, onOpenChange, goal, onSave }: GoalDialogProps
     </Dialog>
   );
 }
-
