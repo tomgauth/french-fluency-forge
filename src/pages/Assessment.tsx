@@ -3,24 +3,28 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { AdminPadding } from "@/components/AdminPadding";
 import IntakeForm from "@/components/assessment/IntakeForm";
 import ConsentForm from "@/components/assessment/ConsentForm";
 import { PronunciationModule } from "@/components/assessment/pronunciation";
-import { FluencyModule } from "@/components/assessment/fluency";
 import { ConfidenceModule } from "@/components/assessment/confidence";
-import { SyntaxModule } from "@/components/assessment/syntax";
 import { ConversationModule } from "@/components/assessment/conversation";
 import { ComprehensionModule } from "@/components/assessment/comprehension";
 import { PersonalityQuiz } from "@/components/assessment/personality-quiz";
 import { ProcessingView } from "@/components/assessment/ProcessingView";
 import { LiveDataViewer } from "@/components/LiveDataViewer";
+import { EnhancedLiveDataViewer } from "@/components/EnhancedLiveDataViewer";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/integrations/supabase/types";
 
 type SessionStatus = Database["public"]["Enums"]["session_status"];
-type AssessmentPhase = "pronunciation" | "fluency" | "confidence" | "syntax" | "conversation" | "comprehension";
-
+// 4 assessment modules:
+// A. Pronunciation - pronunciation exercises
+// B. Comprehension - listening comprehension
+// C. Confidence - confidence questionnaire only
+// D. Speech test - open-ended prompt for fluency, syntax, conversation skills
+type AssessmentPhase = "pronunciation" | "comprehension" | "confidence" | "conversation";
 interface AssessmentSession {
   id: string;
   status: SessionStatus;
@@ -37,7 +41,7 @@ const Assessment = () => {
   const [assessmentPhase, setAssessmentPhase] = useState<AssessmentPhase>(() => {
     // Check for dev override
     const devPhase = sessionStorage.getItem("dev_assessment_phase");
-    if (devPhase && ["pronunciation", "fluency", "confidence", "syntax", "conversation", "comprehension"].includes(devPhase)) {
+    if (devPhase && ["pronunciation", "comprehension", "confidence", "conversation"].includes(devPhase)) {
       sessionStorage.removeItem("dev_assessment_phase"); // Clear after reading
       return devPhase as AssessmentPhase;
     }
@@ -126,7 +130,8 @@ const Assessment = () => {
     );
   }
 
-  const phaseOrder: AssessmentPhase[] = ["pronunciation", "fluency", "confidence", "syntax", "conversation", "comprehension"];
+  // Order: A. Pronunciation → B. Comprehension → C. Confidence → D. Conversation
+  const phaseOrder: AssessmentPhase[] = ["pronunciation", "comprehension", "confidence", "conversation"];
   
   const advancePhase = async () => {
     const currentIdx = phaseOrder.indexOf(assessmentPhase);
@@ -177,24 +182,22 @@ const Assessment = () => {
         switch (assessmentPhase) {
           case "pronunciation":
             return <PronunciationModule {...moduleProps} onSkip={advancePhase} />;
-          case "fluency":
-            return <FluencyModule {...moduleProps} onSkip={advancePhase} />;
-          case "confidence":
-            return <ConfidenceModule {...moduleProps} />;
-          case "syntax":
-            return <SyntaxModule {...moduleProps} />;
-          case "conversation":
-            return <ConversationModule {...moduleProps} />;
           case "comprehension":
             return <ComprehensionModule {...moduleProps} />;
+          case "confidence":
+            return <ConfidenceModule {...moduleProps} />;
+          case "conversation":
+            // Conversation-agent evaluates: fluency, confidence, conversation, and syntax
+            return <ConversationModule {...moduleProps} />;
         }
       };
 
       return (
-        <>
+        <AdminPadding>
           {renderModule()}
-          {(isAdmin || isDev) && <LiveDataViewer sessionId={session.id} moduleType={assessmentPhase} />}
-        </>
+
+          {(isAdmin || isDev) && <EnhancedLiveDataViewer sessionId={session.id} moduleType={assessmentPhase} />}
+        </AdminPadding>
       );
 
     case "processing":

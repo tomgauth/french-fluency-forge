@@ -9,51 +9,77 @@ interface Props {
 const PAGE_WIDTH = 794;
 const PAGE_HEIGHT = 1123;
 
+// Color pairs: [leftColor, rightColor] - darker when dominant, lighter when not
+const pdfAxisColors: Record<string, { left: [string, string]; right: [string, string] }> = {
+  // Control = Slate/Steel Blue, Flow = Teal/Cyan
+  control_flow: {
+    left: ['#475569', '#94a3b8'],
+    right: ['#0d9488', '#5eead4'],
+  },
+  // Accuracy = Indigo/Deep Blue, Expressiveness = Amber/Orange
+  accuracy_expressiveness: {
+    left: ['#4338ca', '#a5b4fc'],
+    right: ['#d97706', '#fcd34d'],
+  },
+  // Security = Emerald/Green, Risk = Rose/Red-Pink
+  security_risk: {
+    left: ['#059669', '#6ee7b7'],
+    right: ['#e11d48', '#fda4af'],
+  },
+};
+
 function PDFAxisBar({ 
   leftLabel, 
   rightLabel, 
   normalized,
-  label
+  label,
+  axisKey
 }: { 
   leftLabel: string; 
   rightLabel: string; 
   normalized: number;
   label: string;
+  axisKey: string;
 }) {
+  // Clamp position between 8% and 92% for visual buffer
+  const clampedPosition = Math.max(8, Math.min(92, normalized));
+  const colors = pdfAxisColors[axisKey] || pdfAxisColors.control_flow;
+  
+  // Determine which side is dominant (darker)
+  const leaningLeft = normalized < 50;
+  const leftColor = leaningLeft ? colors.left[0] : colors.left[1];
+  const rightColor = leaningLeft ? colors.right[1] : colors.right[0];
+  
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 4 }}>
-        <span>{leftLabel}</span>
-        <span>{rightLabel}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+        <span style={{ color: leftColor, fontWeight: leaningLeft ? 600 : 400 }}>{leftLabel}</span>
+        <span style={{ color: rightColor, fontWeight: !leaningLeft ? 600 : 400 }}>{rightLabel}</span>
       </div>
-      <div style={{ position: 'relative', height: 12, backgroundColor: '#e5e7eb', borderRadius: 9999, overflow: 'hidden' }}>
-        <div 
-          style={{ 
-            position: 'absolute', 
-            height: '100%', 
-            backgroundColor: '#6366f1', 
-            borderRadius: 9999,
-            width: `${normalized}%`
-          }}
-        />
+      <div style={{ position: 'relative', height: 12, borderRadius: 9999, overflow: 'hidden', display: 'flex' }}>
+        {/* Left side */}
+        <div style={{ width: `${clampedPosition}%`, backgroundColor: leftColor, borderTopLeftRadius: 9999, borderBottomLeftRadius: 9999 }} />
+        {/* Right side */}
+        <div style={{ width: `${100 - clampedPosition}%`, backgroundColor: rightColor, borderTopRightRadius: 9999, borderBottomRightRadius: 9999 }} />
+        {/* Position marker */}
         <div 
           style={{ 
             position: 'absolute', 
             top: '50%', 
             transform: 'translate(-50%, -50%)',
-            left: `${normalized}%`,
+            left: `${clampedPosition}%`,
             width: 16, 
             height: 16, 
-            backgroundColor: '#4f46e5', 
+            backgroundColor: 'white', 
             borderRadius: 9999, 
-            border: '2px solid white',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+            border: '2px solid rgba(0,0,0,0.15)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            zIndex: 10
           }}
         />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
         <span style={{ fontSize: 11, color: '#9ca3af' }}>{label}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#6366f1' }}>{Math.round(normalized)}%</span>
       </div>
     </div>
   );
@@ -92,18 +118,21 @@ export function PDFPage1({ data }: Props) {
             rightLabel="Flow" 
             normalized={data.axes.control_flow.normalized}
             label={data.axes.control_flow.label}
+            axisKey="control_flow"
           />
           <PDFAxisBar 
             leftLabel="Accuracy" 
             rightLabel="Expressiveness" 
             normalized={data.axes.accuracy_expressiveness.normalized}
             label={data.axes.accuracy_expressiveness.label}
+            axisKey="accuracy_expressiveness"
           />
           <PDFAxisBar 
             leftLabel="Security" 
             rightLabel="Risk" 
             normalized={data.axes.security_risk.normalized}
             label={data.axes.security_risk.label}
+            axisKey="security_risk"
           />
         </div>
       </div>
@@ -146,9 +175,21 @@ export function PDFPage1({ data }: Props) {
           <span style={{ width: 4, height: 24, backgroundColor: '#a855f7', borderRadius: 4 }}></span>
           About You
         </h2>
-        <p style={{ fontSize: 13, lineHeight: 1.7, color: '#374151' }}>
-          {data.archetype.description}
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {data.archetype.description.split('. ').reduce((acc: string[][], sentence, i, arr) => {
+            const lastGroup = acc[acc.length - 1];
+            if (!lastGroup || lastGroup.length >= 2) {
+              acc.push([sentence + (i < arr.length - 1 ? '.' : '')]);
+            } else {
+              lastGroup.push(sentence + (i < arr.length - 1 ? '.' : ''));
+            }
+            return acc;
+          }, []).map((sentences, i) => (
+            <p key={i} style={{ fontSize: 13, lineHeight: 1.7, color: '#374151', margin: 0 }}>
+              {sentences.join(' ')}
+            </p>
+          ))}
+        </div>
       </div>
 
       {/* Page number */}

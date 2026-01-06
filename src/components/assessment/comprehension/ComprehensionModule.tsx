@@ -2,15 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { 
   Headphones, 
   ArrowRight, 
   Play, 
-  Mic, 
-  Square, 
   Volume2, 
   Check,
   Loader2,
@@ -20,7 +15,6 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { useAudioRecorder, formatTime } from '@/hooks/useAudioRecorder';
 import { getAssessmentItems, type ComprehensionItem } from './comprehensionItems';
 
 interface ComprehensionModuleProps {
@@ -28,15 +22,15 @@ interface ComprehensionModuleProps {
   onComplete: () => void;
 }
 
-interface RecordingResult {
-  transcript: string;
+interface MultiSelectResult {
   score: number;
   feedbackFr: string;
-  understoodFacts: Array<{ fact: string; ok: boolean; evidence: string }>;
-  intentMatch: { ok: boolean; type: string };
+  correctSelections: string[];
+  missedSelections: string[];
+  incorrectSelections: string[];
 }
 
-type ItemPhase = 'ready' | 'playing' | 'played' | 'recording' | 'processing' | 'complete';
+type ItemPhase = 'ready' | 'playing' | 'played' | 'answering' | 'processing' | 'complete';
 
 export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModuleProps) {
   const { user } = useAuth();
@@ -44,30 +38,26 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
   const [items] = useState<ComprehensionItem[]>(getAssessmentItems());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [itemPhase, setItemPhase] = useState<ItemPhase>('ready');
-  const [results, setResults] = useState<Record<string, RecordingResult>>({});
+  const [results, setResults] = useState<Record<string, MultiSelectResult>>({});
   const [audioPlayedAt, setAudioPlayedAt] = useState<Record<string, Date>>({});
   const [generatedAudio, setGeneratedAudio] = useState<Record<string, string>>({});
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-  
-  // Dev mode states
-  const isDev = import.meta.env.DEV || window.location.pathname.startsWith('/dev');
-  const [useTextInput, setUseTextInput] = useState(false);
-  const [devTextInput, setDevTextInput] = useState('');
-  const [skipAudio, setSkipAudio] = useState(false);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, Set<string>>>({});
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
-  const { 
-    isRecording, 
-    recordingTime, 
-    audioBlob, 
-    startRecording, 
-    stopRecording, 
-    resetRecording 
-  } = useAudioRecorder({ maxDuration: 30 });
 
   const currentItem = items[currentIndex];
   const isLastItem = currentIndex === items.length - 1;
+
+  // Initialize selected options for current item
+  useEffect(() => {
+    if (currentItem && !selectedOptions[currentItem.id]) {
+      setSelectedOptions(prev => ({
+        ...prev,
+        [currentItem.id]: new Set<string>()
+      }));
+    }
+  }, [currentItem, selectedOptions]);
 
   // Generate TTS audio for current item
   const generateAudio = useCallback(async () => {
@@ -77,7 +67,7 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
     try {
       const { data, error } = await supabase.functions.invoke('french-tts', {
         body: { 
-          text: currentItem.audioScript,
+          text: currentItem.transcript_fr,
           speed: 1.2,  // Slightly fast, natural pace
           stability: 0.35  // More natural variation
         }
@@ -85,9 +75,27 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
       
       if (error) throw error;
       
-      if (data?.audioContent) {
-        const audioUrl = `data:audio/mp3;base64,${data.audioContent}`;
+      // The response is binary audio data (ArrayBuffer or Blob)
+      if (data) {
+        let audioUrl: string;
+        
+        if (data instanceof Blob) {
+          // Convert Blob to URL
+          audioUrl = URL.createObjectURL(data);
+        } else if (data instanceof ArrayBuffer) {
+          // Convert ArrayBuffer to Blob then URL
+          const blob = new Blob([data], { type: 'audio/mpeg' });
+          audioUrl = URL.createObjectURL(blob);
+        } else if (typeof data === 'object' && data.audioContent) {
+          // Legacy format: base64 encoded
+          audioUrl = `data:audio/mp3;base64,${data.audioContent}`;
+        } else {
+          throw new Error('Unexpected audio response format');
+        }
+        
         setGeneratedAudio(prev => ({ ...prev, [currentItem.id]: audioUrl }));
+      } else {
+        throw new Error('No audio data received');
       }
     } catch (err) {
       console.error('Error generating audio:', err);
@@ -107,13 +115,6 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
   const handlePlayAudio = () => {
     if (!currentItem) return;
     
-    // Dev mode: skip audio
-    if (isDev && skipAudio) {
-      setAudioPlayedAt(prev => ({ ...prev, [currentItem.id]: new Date() }));
-      setItemPhase('played');
-      return;
-    }
-    
     const audioUrl = generatedAudio[currentItem.id];
     if (!audioUrl) {
       toast.error('Audio not ready yet');
@@ -127,7 +128,7 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
     
     audio.onended = () => {
       setAudioPlayedAt(prev => ({ ...prev, [currentItem.id]: new Date() }));
-      setItemPhase('played');
+      setItemPhase('answering');
     };
     
     audio.onerror = () => {
@@ -138,24 +139,34 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
     audio.play();
   };
 
-  const handleStartRecording = async () => {
-    setItemPhase('recording');
-    await startRecording();
+  const toggleOption = (optionId: string) => {
+    if (!currentItem || itemPhase === 'processing' || itemPhase === 'complete') return;
+    
+    setSelectedOptions(prev => {
+      const currentSet = prev[currentItem.id] || new Set<string>();
+      const newSet = new Set(currentSet);
+      
+      if (newSet.has(optionId)) {
+        newSet.delete(optionId);
+      } else {
+        newSet.add(optionId);
+      }
+      
+      return {
+        ...prev,
+        [currentItem.id]: newSet
+      };
+    });
   };
 
-  const handleStopRecording = () => {
-    stopRecording();
-  };
-
-  // Process recording when audioBlob is ready
-  useEffect(() => {
-    if (audioBlob && itemPhase === 'recording') {
-      handleSubmitRecording(audioBlob);
-    }
-  }, [audioBlob]);
-
-  const handleSubmitRecording = async (blob: Blob) => {
+  const handleSubmit = async () => {
     if (!currentItem || !user) return;
+    
+    const selected = Array.from(selectedOptions[currentItem.id] || []);
+    if (selected.length === 0) {
+      toast.error('Please select at least one option');
+      return;
+    }
     
     setItemPhase('processing');
     
@@ -175,28 +186,15 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
       
       if (insertError) throw insertError;
       
-      // Convert blob to base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-      });
-      reader.readAsDataURL(blob);
-      const audioBase64 = await base64Promise;
-      
       // Analyze comprehension
       const { data, error } = await supabase.functions.invoke('analyze-comprehension', {
         body: {
-          audioBase64,
+          selectedOptionIds: selected,
           itemId: currentItem.id,
           recordingId: recording.id,
           itemConfig: {
-            context: currentItem.context,
-            audioScript: currentItem.audioScript,
-            keyFacts: currentItem.keyFacts,
-            acceptableIntents: currentItem.acceptableIntents
+            correct_option_ids: currentItem.answer_key.correct_option_ids,
+            options: currentItem.options
           }
         }
       });
@@ -206,78 +204,19 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
       setResults(prev => ({
         ...prev,
         [currentItem.id]: {
-          transcript: data.transcript,
           score: data.score,
           feedbackFr: data.feedbackFr,
-          understoodFacts: data.understoodFacts,
-          intentMatch: data.intentMatch
+          correctSelections: data.correctSelections || [],
+          missedSelections: data.missedSelections || [],
+          incorrectSelections: data.incorrectSelections || []
         }
       }));
       
       setItemPhase('complete');
       
     } catch (err) {
-      console.error('Error processing recording:', err);
-      toast.error('Failed to process your response');
-      setItemPhase('played');
-    }
-  };
-
-  const handleTextSubmit = async () => {
-    if (!currentItem || !user || !devTextInput.trim()) return;
-    
-    setItemPhase('processing');
-    
-    try {
-      // Create recording entry
-      const { data: recording, error: insertError } = await supabase
-        .from('comprehension_recordings')
-        .insert({
-          session_id: sessionId,
-          user_id: user.id,
-          item_id: currentItem.id,
-          audio_played_at: audioPlayedAt[currentItem.id]?.toISOString() || new Date().toISOString(),
-          status: 'pending'
-        })
-        .select('id')
-        .single();
-      
-      if (insertError) throw insertError;
-      
-      // Analyze with text input
-      const { data, error } = await supabase.functions.invoke('analyze-comprehension', {
-        body: {
-          transcript: devTextInput,
-          itemId: currentItem.id,
-          recordingId: recording.id,
-          itemConfig: {
-            context: currentItem.context,
-            audioScript: currentItem.audioScript,
-            keyFacts: currentItem.keyFacts,
-            acceptableIntents: currentItem.acceptableIntents
-          }
-        }
-      });
-      
-      if (error) throw error;
-      
-      setResults(prev => ({
-        ...prev,
-        [currentItem.id]: {
-          transcript: data.transcript,
-          score: data.score,
-          feedbackFr: data.feedbackFr,
-          understoodFacts: data.understoodFacts,
-          intentMatch: data.intentMatch
-        }
-      }));
-      
-      setItemPhase('complete');
-      setDevTextInput('');
-      
-    } catch (err) {
-      console.error('Error processing text:', err);
-      toast.error('Failed to process your response');
+      console.error('Error processing submission:', err);
+      toast.error('Failed to process your answers');
       setItemPhase('played');
     }
   };
@@ -294,15 +233,41 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
         .eq('id', sessionId)
         .then(() => onComplete());
     } else {
-      resetRecording();
       setCurrentIndex(prev => prev + 1);
       setItemPhase('ready');
     }
   };
 
   const handleRedo = () => {
-    resetRecording();
-    setItemPhase('played');
+    if (!currentItem) return;
+    setSelectedOptions(prev => ({
+      ...prev,
+      [currentItem.id]: new Set<string>()
+    }));
+    setItemPhase('answering');
+  };
+
+  const getButtonVariant = (optionId: string): "default" | "secondary" | "outline" | "destructive" => {
+    if (!currentItem) return "outline";
+    
+    const result = results[currentItem.id];
+    const isSelected = selectedOptions[currentItem.id]?.has(optionId) || false;
+    const isCorrect = currentItem.answer_key.correct_option_ids.includes(optionId);
+    
+    if (itemPhase === 'complete' && result) {
+      // Show results
+      if (isCorrect && isSelected) {
+        return "default"; // Green/correct
+      } else if (isCorrect && !isSelected) {
+        return "outline"; // Missed (could add special styling)
+      } else if (!isCorrect && isSelected) {
+        return "destructive"; // Wrong selection
+      }
+      return "outline";
+    }
+    
+    // During selection
+    return isSelected ? "secondary" : "outline";
   };
 
   // Intro screen
@@ -318,22 +283,22 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
           </CardHeader>
           <CardContent className="space-y-6">
             <p className="text-center text-muted-foreground">
-              Listen to short French audio clips and respond naturally. This tests your ability to understand spoken French at natural speed.
+              Listen to French audio passages and select all statements that are true. There may be more than one correct answer.
             </p>
             
             <div className="bg-muted/50 rounded-lg p-4 space-y-3">
               <h4 className="font-medium">How it works:</h4>
               <ul className="text-sm text-muted-foreground space-y-2">
-                <li>• You'll see a context (e.g., "You're at a bakery")</li>
-                <li>• Click play to hear the audio <strong>once</strong></li>
-                <li>• Respond by speaking as you would in real life</li>
-                <li>• We'll evaluate if you understood the key information</li>
+                <li>• Click play to hear the French audio passage</li>
+                <li>• Select all statements that are true based on what you heard</li>
+                <li>• You can select multiple options</li>
+                <li>• Click submit when you're ready</li>
               </ul>
             </div>
 
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                <strong>Important:</strong> You can only play each audio clip once. Listen carefully!
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+              <p className="text-sm text-blue-700 dark:text-blue-400">
+                <strong>Tip:</strong> Listen carefully - you can play the audio as many times as you need before submitting.
               </p>
             </div>
 
@@ -356,49 +321,23 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
   const result = results[currentItem.id];
   const hasPlayed = !!audioPlayedAt[currentItem.id];
   const isAudioReady = !!generatedAudio[currentItem.id];
+  const selectedCount = selectedOptions[currentItem.id]?.size || 0;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="max-w-4xl mx-auto space-y-4">
       {/* Progress bar */}
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>Item {currentIndex + 1} of {items.length}</span>
         <Badge variant="outline" className="gap-1">
           <Headphones className="h-3 w-3" />
-          Listening
+          {currentItem.cefr_level}
         </Badge>
       </div>
-      
-      {/* Dev mode toggle */}
-      {isDev && (
-        <Card className="border-amber-500/30 bg-amber-500/5">
-          <CardContent className="py-3">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="text-input"
-                  checked={useTextInput}
-                  onCheckedChange={setUseTextInput}
-                />
-                <Label htmlFor="text-input" className="text-xs">Text input</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="skip-audio"
-                  checked={skipAudio}
-                  onCheckedChange={setSkipAudio}
-                />
-                <Label htmlFor="skip-audio" className="text-xs">Skip audio</Label>
-              </div>
-              <Badge variant="outline" className="text-xs">DEV</Badge>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>
-          <div className="text-sm text-muted-foreground mb-2">Context:</div>
-          <CardTitle className="text-xl">{currentItem.context}</CardTitle>
+          <CardTitle className="text-xl">{currentItem.prompt.fr}</CardTitle>
+          <p className="text-sm text-muted-foreground mt-2">{currentItem.prompt.en}</p>
         </CardHeader>
         
         <CardContent className="space-y-6">
@@ -423,12 +362,9 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
                     className="gap-2"
                   >
                     <Play className="h-5 w-5" />
-                    Play Audio (One Time Only)
+                    Play Audio
                   </Button>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Listen carefully — you can only play this once
-                </p>
               </>
             )}
             
@@ -439,65 +375,66 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
               </div>
             )}
             
-            {(itemPhase === 'played' || itemPhase === 'recording' || itemPhase === 'processing' || itemPhase === 'complete') && hasPlayed && (
+            {(itemPhase === 'answering' || itemPhase === 'processing' || itemPhase === 'complete') && hasPlayed && (
               <div className="flex items-center justify-center gap-2 text-muted-foreground">
                 <VolumeX className="h-5 w-5" />
                 <span className="text-sm">Audio played</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handlePlayAudio}
+                  className="ml-2"
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Replay
+                </Button>
               </div>
             )}
           </div>
 
-          {/* Recording section */}
-          {(itemPhase === 'played' || itemPhase === 'recording') && (
+          {/* Multi-select options */}
+          {(itemPhase === 'answering' || itemPhase === 'processing' || itemPhase === 'complete') && hasPlayed && (
             <div className="space-y-4">
               <div className="text-center text-sm text-muted-foreground">
-                Now respond as you would in this situation:
+                Select all statements that are true. You can select multiple options.
               </div>
               
-              {isDev && useTextInput ? (
-                <div className="space-y-3">
-                  <Textarea
-                    placeholder="Type your response in French..."
-                    value={devTextInput}
-                    onChange={(e) => setDevTextInput(e.target.value)}
-                    className="min-h-[100px]"
-                  />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {currentItem.options.map(option => (
                   <Button 
-                    onClick={handleTextSubmit}
-                    disabled={!devTextInput.trim()}
-                    className="w-full"
+                    key={option.id}
+                    variant={getButtonVariant(option.id)}
+                    onClick={() => toggleOption(option.id)}
+                    disabled={itemPhase === 'processing' || itemPhase === 'complete'}
+                    className="h-auto min-h-[80px] py-3 px-4 text-sm whitespace-normal break-words"
                   >
-                    Submit Response
+                    {option.fr}
                   </Button>
-                </div>
-              ) : (
-                <div className="flex justify-center">
-                  {!isRecording ? (
-                    <Button 
-                      size="lg" 
-                      onClick={handleStartRecording}
-                      className="gap-2"
-                    >
-                      <Mic className="h-5 w-5" />
-                      Start Recording
-                    </Button>
-                  ) : (
-                    <div className="space-y-4 text-center">
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                        <span className="text-lg font-mono">{formatTime(recordingTime)}</span>
-                      </div>
-                      <Button 
-                        variant="destructive" 
-                        size="lg"
-                        onClick={handleStopRecording}
-                        className="gap-2"
-                      >
-                        <Square className="h-5 w-5" />
-                        Stop Recording
-                      </Button>
-                    </div>
-                  )}
+                ))}
+              </div>
+              
+              {itemPhase !== 'complete' && (
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedCount} option{selectedCount !== 1 ? 's' : ''} selected
+                  </span>
+                  <Button 
+                    onClick={handleSubmit}
+                    disabled={selectedCount === 0 || itemPhase === 'processing'}
+                    className="gap-2"
+                  >
+                    {itemPhase === 'processing' ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        Submit
+                        <Check className="h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
                 </div>
               )}
             </div>
@@ -507,7 +444,7 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
           {itemPhase === 'processing' && (
             <div className="flex items-center justify-center gap-3 py-8">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              <span>Analyzing your response...</span>
+              <span>Analyzing your answers...</span>
             </div>
           )}
 
@@ -517,7 +454,7 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
               <div className="flex items-center justify-between p-4 bg-primary/10 rounded-lg">
                 <span className="font-medium">Score</span>
                 <Badge variant="default" className="text-lg px-3">
-                  {result.score}/100
+                  {Math.round(result.score)}/100
                 </Badge>
               </div>
               
@@ -526,19 +463,38 @@ export function ComprehensionModule({ sessionId, onComplete }: ComprehensionModu
                 <p className="text-muted-foreground">{result.feedbackFr}</p>
               </div>
               
-              {isDev && (
-                <div className="p-4 bg-amber-500/10 rounded-lg space-y-2 text-xs">
-                  <div className="font-medium">Dev Details:</div>
-                  <div><strong>Transcript:</strong> {result.transcript}</div>
-                  <div><strong>Intent:</strong> {result.intentMatch.type} ({result.intentMatch.ok ? '✓' : '✗'})</div>
-                  <div><strong>Facts:</strong></div>
-                  <ul className="ml-4">
-                    {result.understoodFacts.map((f, i) => (
-                      <li key={i}>{f.ok ? '✓' : '✗'} {f.fact}</li>
-                    ))}
-                  </ul>
+              {/* Show which options were correct/incorrect */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {currentItem.options.map(option => {
+                  const isCorrect = currentItem.answer_key.correct_option_ids.includes(option.id);
+                  const wasSelected = selectedOptions[currentItem.id]?.has(option.id) || false;
+                  const isCorrectlySelected = isCorrect && wasSelected;
+                  const isMissed = isCorrect && !wasSelected;
+                  const isIncorrectlySelected = !isCorrect && wasSelected;
+                  
+                  return (
+                    <div
+                      key={option.id}
+                      className={`p-3 rounded-lg border-2 ${
+                        isCorrectlySelected
+                          ? 'bg-green-500/20 border-green-500'
+                          : isMissed
+                          ? 'bg-yellow-500/20 border-yellow-500'
+                          : isIncorrectlySelected
+                          ? 'bg-red-500/20 border-red-500'
+                          : 'bg-muted/30 border-border'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {isCorrectlySelected && <span className="text-green-600">✓</span>}
+                        {isMissed && <span className="text-yellow-600">!</span>}
+                        {isIncorrectlySelected && <span className="text-red-600">✗</span>}
+                        <span className="text-sm">{option.fr}</span>
+                      </div>
+                    </div>
+                  );
+                })}
                 </div>
-              )}
               
               <div className="flex gap-3 pt-2">
                 <Button variant="outline" onClick={handleRedo} className="gap-2">

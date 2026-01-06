@@ -37,31 +37,69 @@ const axisLabels: Record<AxisKey, [string, string]> = {
   security_risk: ['Security', 'Risk'],
 };
 
+// Color pairs: [leftColor, rightColor] - darker when dominant, lighter when not
+const axisColors: Record<AxisKey, { left: [string, string]; right: [string, string] }> = {
+  // Control = Slate/Steel Blue, Flow = Teal/Cyan
+  control_flow: {
+    left: ['#475569', '#94a3b8'],   // Slate: dark, light
+    right: ['#0d9488', '#5eead4'],  // Teal: dark, light
+  },
+  // Accuracy = Indigo/Deep Blue, Expressiveness = Amber/Orange
+  accuracy_expressiveness: {
+    left: ['#4338ca', '#a5b4fc'],   // Indigo: dark, light
+    right: ['#d97706', '#fcd34d'],  // Amber: dark, light
+  },
+  // Security = Emerald/Green, Risk = Rose/Red-Pink
+  security_risk: {
+    left: ['#059669', '#6ee7b7'],   // Emerald: dark, light
+    right: ['#e11d48', '#fda4af'],  // Rose: dark, light
+  },
+};
+
 function AxisBar({ axisKey, result }: { axisKey: AxisKey; result: AxisResult }) {
   const [leftLabel, rightLabel] = axisLabels[axisKey];
+  const colors = axisColors[axisKey];
+  // Clamp position between 8% and 92% for visual buffer
+  const clampedPosition = Math.max(8, Math.min(92, result.normalized));
+  
+  // Determine which side is dominant (darker)
+  const leaningLeft = result.normalized < 50;
+  const leftColor = leaningLeft ? colors.left[0] : colors.left[1];
+  const rightColor = leaningLeft ? colors.right[1] : colors.right[0];
   
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-sm font-medium">
-        <span className={result.normalized < 50 ? "text-primary" : "text-muted-foreground"}>
+        <span style={{ color: leftColor, fontWeight: leaningLeft ? 600 : 400 }}>
           {leftLabel}
         </span>
-        <span className={result.normalized >= 50 ? "text-primary" : "text-muted-foreground"}>
+        <span style={{ color: rightColor, fontWeight: !leaningLeft ? 600 : 400 }}>
           {rightLabel}
         </span>
       </div>
-      <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${result.normalized}%` }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="absolute h-full bg-gradient-to-r from-primary/60 to-primary rounded-full"
+      <div className="relative h-3 rounded-full overflow-hidden">
+        {/* Left side - from start to marker */}
+        <div 
+          className="absolute inset-y-0 left-0 rounded-l-full"
+          style={{ 
+            width: `${clampedPosition}%`,
+            backgroundColor: leftColor,
+          }}
         />
+        {/* Right side - from marker to end */}
+        <div 
+          className="absolute inset-y-0 right-0 rounded-r-full"
+          style={{ 
+            width: `${100 - clampedPosition}%`,
+            backgroundColor: rightColor,
+          }}
+        />
+        {/* Position marker */}
         <motion.div
           initial={{ left: '50%' }}
-          animate={{ left: `${result.normalized}%` }}
+          animate={{ left: `${clampedPosition}%` }}
           transition={{ duration: 1, ease: "easeOut" }}
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-primary rounded-full border-2 border-background shadow-lg"
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-background rounded-full border-2 border-foreground/20 shadow-lg z-10"
         />
       </div>
       <p className="text-center text-xs text-muted-foreground">{result.label}</p>
@@ -262,10 +300,23 @@ Take the test: ${shareUrl}
             transition={{ delay: 0.25 }}
             className="p-6 rounded-2xl border border-border bg-card"
           >
-            <h3 className="font-semibold mb-4">About You</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {archetype.description}
-            </p>
+            <h3 className="font-semibold mb-5">About You</h3>
+            <div className="space-y-4">
+              {archetype.description.split('. ').reduce((acc: string[][], sentence, i, arr) => {
+                // Group sentences into paragraphs of 2-3 sentences
+                const lastGroup = acc[acc.length - 1];
+                if (!lastGroup || lastGroup.length >= 2) {
+                  acc.push([sentence + (i < arr.length - 1 ? '.' : '')]);
+                } else {
+                  lastGroup.push(sentence + (i < arr.length - 1 ? '.' : ''));
+                }
+                return acc;
+              }, []).map((sentences, i) => (
+                <p key={i} className="text-sm leading-relaxed text-muted-foreground">
+                  {sentences.join(' ')}
+                </p>
+              ))}
+            </div>
           </motion.div>
 
           {/* Archetype Card - Strengths & Bottleneck */}

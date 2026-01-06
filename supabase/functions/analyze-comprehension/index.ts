@@ -9,87 +9,89 @@ const corsHeaders = {
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 
-const COMPREHENSION_SCORING_PROMPT = `SCORE LISTENING COMPREHENSION FROM THE LEARNER RESPONSE. OUTPUT ONLY JSON.
-
-BE STRICT ABOUT WHETHER THEY UNDERSTOOD THE KEY FACTS AND INTENT.
-
-DO NOT JUDGE PRONUNCIATION OR GRAMMAR.`;
-
-async function transcribeAudio(audioBase64: string): Promise<string> {
-  console.log('Starting transcription...');
-  
-  const binaryString = atob(audioBase64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  
-  const formData = new FormData();
-  formData.append('file', new Blob([bytes], { type: 'audio/webm' }), 'audio.webm');
-  formData.append('model', 'whisper-1');
-  formData.append('language', 'fr');
-  formData.append('response_format', 'json');
-
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('Whisper API error:', error);
-    throw new Error(`Transcription failed: ${error}`);
-  }
-
-  const result = await response.json();
-  console.log('Transcription complete:', result.text?.substring(0, 100));
-  return result.text || '';
-}
-
-interface ComprehensionItem {
-  context: string;
-  audioScript: string;
-  keyFacts: string[];
-  acceptableIntents: string[];
-}
-
-async function analyzeComprehension(
-  transcript: string, 
-  item: ComprehensionItem
-): Promise<{
+interface MultiSelectScoringResult {
   score: number;
-  understoodFacts: Array<{ fact: string; ok: boolean; evidence: string }>;
-  intentMatch: { ok: boolean; type: string };
-  feedbackFr: string;
-  confidence: number;
-}> {
-  console.log('Analyzing comprehension...');
+  correctSelections: string[];
+  missedSelections: string[];
+  incorrectSelections: string[];
+}
+
+function scoreMultiSelect(
+  selected: string[],
+  correct: string[]
+): MultiSelectScoringResult {
+  const selectedSet = new Set(selected);
+  const correctSet = new Set(correct);
   
-  const userPrompt = `Context: ${item.context}
+  const correctSelections = selected.filter(id => correctSet.has(id));
+  const incorrectSelections = selected.filter(id => !correctSet.has(id));
+  const missedSelections = correct.filter(id => !selectedSet.has(id));
+  
+  // Score: (correct - incorrect) / total_correct * 100
+  // Minimum score is 0
+  const score = correct.length > 0
+    ? Math.max(0, ((correctSelections.length - incorrectSelections.length) / correct.length) * 100)
+    : 0;
+  
+  return { 
+    score: Math.round(score * 100) / 100, // Round to 2 decimal places
+    correctSelections, 
+    missedSelections, 
+    incorrectSelections 
+  };
+}
 
-Audio script (ground truth): ${item.audioScript}
+async function generateFeedback(
+  scoringResult: MultiSelectScoringResult,
+  correctOptionIds: string[],
+  itemConfig: {
+    options: Array<{ id: string; fr: string; en: string }>;
+    correct_option_ids: string[];
+  }
+): Promise<string> {
+  if (!OPENAI_API_KEY) {
+    // Fallback feedback if no API key
+    const correctCount = scoringResult.correctSelections.length;
+    const totalCorrect = correctOptionIds.length;
+    if (correctCount === totalCorrect && scoringResult.incorrectSelections.length === 0) {
+      return "Excellent ! Vous avez tout compris.";
+    } else if (correctCount > 0) {
+      return `Bien ! Vous avez compris ${correctCount} sur ${totalCorrect} points importants.`;
+    } else {
+      return "Essayez d'écouter plus attentivement. Vous pouvez réessayer.";
+    }
+  }
 
-Key facts to understand: ${JSON.stringify(item.keyFacts)}
+  const optionsMap = new Map(
+    itemConfig.options.map(opt => [opt.id, opt])
+  );
 
-Acceptable intents: ${JSON.stringify(item.acceptableIntents)}
+  const correctTexts = scoringResult.correctSelections
+    .map(id => optionsMap.get(id)?.fr)
+    .filter(Boolean)
+    .join(", ");
+  
+  const missedTexts = scoringResult.missedSelections
+    .map(id => optionsMap.get(id)?.fr)
+    .filter(Boolean)
+    .join(", ");
+  
+  const incorrectTexts = scoringResult.incorrectSelections
+    .map(id => optionsMap.get(id)?.fr)
+    .filter(Boolean)
+    .join(", ");
 
-Learner response transcript:
+  const prompt = `Tu es un professeur de français encourageant. Un apprenant vient de faire un exercice de compréhension orale avec sélection multiple.
 
-${transcript}
+Résultats:
+- Réponses correctes sélectionnées: ${correctTexts || "aucune"}
+- Réponses correctes manquées: ${missedTexts || "aucune"}
+- Réponses incorrectes sélectionnées: ${incorrectTexts || "aucune"}
+- Score: ${scoringResult.score}/100
 
-Return:
+Génère un feedback en français, encourageant et constructif, en 1-2 phrases maximum. Sois positif même si le score est bas.`;
 
-{
-  "score": 0-100,
-  "understood_facts": [{"fact":"...","ok":true/false,"evidence":"..."}],
-  "intent_match": {"ok":true/false,"type":"answer|question|other"},
-  "feedback_fr": "1-2 supportive sentences in French",
-  "confidence": 0-1
-}`;
-
+  try {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -98,88 +100,33 @@ Return:
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      temperature: 0,
-      top_p: 1,
-      presence_penalty: 0,
-      frequency_penalty: 0,
+        temperature: 0.7,
       messages: [
-        { role: 'system', content: COMPREHENSION_SCORING_PROMPT },
-        { role: 'user', content: userPrompt }
-      ],
-      tools: [
-        {
-          type: 'function',
-          function: {
-            name: 'submit_comprehension_evaluation',
-            description: 'Submit the comprehension evaluation',
-            parameters: {
-              type: 'object',
-              properties: {
-                score: {
-                  type: 'number',
-                  description: 'Score from 0-100'
-                },
-                understood_facts: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      fact: { type: 'string' },
-                      ok: { type: 'boolean' },
-                      evidence: { type: 'string' }
-                    },
-                    required: ['fact', 'ok', 'evidence']
-                  }
-                },
-                intent_match: {
-                  type: 'object',
-                  properties: {
-                    ok: { type: 'boolean' },
-                    type: { type: 'string' }
-                  },
-                  required: ['ok', 'type']
-                },
-                feedback_fr: {
-                  type: 'string',
-                  description: '1-2 supportive sentences in French'
-                },
-                confidence: {
-                  type: 'number',
-                  description: 'Confidence 0-1'
-                }
-              },
-              required: ['score', 'understood_facts', 'intent_match', 'feedback_fr', 'confidence']
-            }
-          }
-        }
-      ],
-      tool_choice: { type: 'function', function: { name: 'submit_comprehension_evaluation' } }
+          { role: 'system', content: 'Tu es un professeur de français encourageant et bienveillant.' },
+          { role: 'user', content: prompt }
+        ],
     }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('AI gateway error:', error);
-    throw new Error(`AI analysis failed: ${error}`);
+      throw new Error(`OpenAI API error: ${response.status}`);
   }
 
   const result = await response.json();
-  console.log('AI analysis result:', JSON.stringify(result).substring(0, 500));
-  
-  const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall) {
-    throw new Error('No tool call in AI response');
+    return result.choices?.[0]?.message?.content?.trim() || "Merci pour votre participation.";
+  } catch (error) {
+    console.error('Error generating feedback:', error);
+    // Fallback feedback
+    const correctCount = scoringResult.correctSelections.length;
+    const totalCorrect = correctOptionIds.length;
+    if (correctCount === totalCorrect && scoringResult.incorrectSelections.length === 0) {
+      return "Excellent ! Vous avez tout compris.";
+    } else if (correctCount > 0) {
+      return `Bien ! Vous avez compris ${correctCount} sur ${totalCorrect} points importants.`;
+    } else {
+      return "Essayez d'écouter plus attentivement. Vous pouvez réessayer.";
+    }
   }
-  
-  const args = JSON.parse(toolCall.function.arguments);
-  
-  return {
-    score: Math.min(100, Math.max(0, args.score)),
-    understoodFacts: args.understood_facts || [],
-    intentMatch: args.intent_match || { ok: false, type: 'other' },
-    feedbackFr: args.feedback_fr || '',
-    confidence: args.confidence || 0
-  };
 }
 
 serve(async (req) => {
@@ -189,21 +136,27 @@ serve(async (req) => {
 
   try {
     const { 
-      audioBase64, 
-      transcript: directTranscript, 
+      selectedOptionIds,
       itemId, 
       recordingId,
       itemConfig 
     } = await req.json();
 
-    if ((!audioBase64 && !directTranscript) || !itemId || !recordingId || !itemConfig) {
+    if (!selectedOptionIds || !Array.isArray(selectedOptionIds) || !itemId || !recordingId || !itemConfig) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({ error: 'Missing required fields: selectedOptionIds (array), itemId, recordingId, itemConfig' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Processing comprehension recording ${recordingId} for item ${itemId}${directTranscript ? ' (dev mode)' : ''}`);
+    if (!itemConfig.correct_option_ids || !Array.isArray(itemConfig.correct_option_ids)) {
+      return new Response(
+        JSON.stringify({ error: 'itemConfig.correct_option_ids must be an array' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Processing multi-select comprehension ${recordingId} for item ${itemId}`);
 
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
@@ -223,35 +176,31 @@ serve(async (req) => {
       .update({ status: 'processing' })
       .eq('id', recordingId);
 
-    // Get transcript
-    let transcript: string;
-    if (directTranscript) {
-      console.log('Using direct text input (dev mode)');
-      transcript = directTranscript;
-    } else {
-      transcript = await transcribeAudio(audioBase64);
-    }
+    // Score the multi-select answers
+    const scoringResult = scoreMultiSelect(selectedOptionIds, itemConfig.correct_option_ids);
 
-    // Analyze comprehension
-    const analysis = await analyzeComprehension(transcript, itemConfig);
+    // Generate feedback
+    const feedbackFr = await generateFeedback(scoringResult, itemConfig.correct_option_ids, itemConfig);
 
     // Version tracking
     const versions = {
-      prompt_version: '2026-01-04',
-      scorer_version: '2026-01-04',
-      asr_version: 'whisper-1'
+      prompt_version: '2026-01-05',
+      scorer_version: '2026-01-05',
+      asr_version: 'none' // No ASR for multi-select
     };
 
     // Update recording with results
     const { error: updateError } = await supabase
       .from('comprehension_recordings')
       .update({
-        transcript,
-        ai_score: analysis.score,
-        ai_feedback_fr: analysis.feedbackFr,
-        understood_facts: analysis.understoodFacts,
-        intent_match: analysis.intentMatch,
-        ai_confidence: analysis.confidence,
+        selected_option_ids: selectedOptionIds,
+        correct_option_ids: itemConfig.correct_option_ids,
+        correct_selections: scoringResult.correctSelections,
+        missed_selections: scoringResult.missedSelections,
+        incorrect_selections: scoringResult.incorrectSelections,
+        ai_score: scoringResult.score,
+        ai_feedback_fr: feedbackFr,
+        ai_confidence: scoringResult.correctSelections.length / itemConfig.correct_option_ids.length,
         prompt_version: versions.prompt_version,
         scorer_version: versions.scorer_version,
         asr_version: versions.asr_version,
@@ -265,17 +214,17 @@ serve(async (req) => {
       throw updateError;
     }
 
-    console.log(`Successfully processed comprehension recording ${recordingId}`);
+    console.log(`Successfully processed multi-select comprehension ${recordingId}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        transcript,
-        score: analysis.score,
-        feedbackFr: analysis.feedbackFr,
-        understoodFacts: analysis.understoodFacts,
-        intentMatch: analysis.intentMatch,
-        confidence: analysis.confidence,
+        score: scoringResult.score,
+        feedbackFr,
+        correctSelections: scoringResult.correctSelections,
+        missedSelections: scoringResult.missedSelections,
+        incorrectSelections: scoringResult.incorrectSelections,
+        confidence: scoringResult.correctSelections.length / itemConfig.correct_option_ids.length,
         versions
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

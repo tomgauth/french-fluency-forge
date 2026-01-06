@@ -1,6 +1,10 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildPersonaSystemPrompt, addRepairEventInstruction, addAntiStallHintInstruction, buildTurnContext } from './promptBuilder.ts';
+import { PERSONA_LIBRARY } from './personaLibrary.ts';
+import { generateRepairEventPrompt, detectResolution, matchRepairPatterns } from './repairEventLibrary.ts';
+import { shouldGiveAntiStallHint, generateAntiStallHint, isOffTopic, generateOffTopicRedirect, shouldEndConversation } from './universalRules.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,17 +13,47 @@ const corsHeaders = {
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 
-const AGENT_SYSTEM_PROMPT = `You are a friendly French conversation partner for an A2 learner.
-Constraints:
-- Use short sentences, A2 vocabulary, and clear questions.
-- Speak naturally but not fast.
-- Ask ONE question per turn.
-- Include exactly one moment of mild misunderstanding so the learner can repair.
-- Never correct grammar explicitly. Keep conversation going.`;
+// ============================================================================
+// Types
+// ============================================================================
 
-const SCORING_SYSTEM_PROMPT = `You are scoring an A2-level French conversation. Output ONLY JSON.
-Do not reward fancy vocabulary. Reward understanding, repair, and staying on topic.
-False starts/repetitions are NOT penalized.`;
+interface ConversationMessage {
+  role: 'agent' | 'user';
+  content: string;
+}
+
+interface EnhancedScenarioConfig {
+  title: string;
+  goal: string;
+  slots: Record<string, string | null>;
+  persona_id: string;
+  tier: 1 | 2 | 3;
+  planned_repair_events?: Array<{
+    event_id: string;
+    trigger_turn: number;
+    description: string;
+  }>;
+  required_slots?: string[];
+  end_conditions?: string[];
+  context?: string;
+}
+
+// Import the UniversalRulesState type from local module
+import type { UniversalRulesState } from './universalRules.ts';
+
+interface AgentTurnResponse {
+  agentResponse: string;
+  repair_event_introduced?: string;
+  hint_given?: boolean;
+  turn_metadata: {
+    agent_word_count: number;
+    question_asked: boolean;
+  };
+}
+
+// ============================================================================
+// Transcription
+// ============================================================================
 
 async function transcribeAudio(audioBase64: string): Promise<string> {
   console.log('Starting transcription...');
@@ -34,7 +68,8 @@ async function transcribeAudio(audioBase64: string): Promise<string> {
   formData.append('file', new Blob([bytes], { type: 'audio/webm' }), 'audio.webm');
   formData.append('model', 'whisper-1');
   formData.append('language', 'fr');
-  formData.append('response_format', 'json');
+  formData.append('response_format', 'verbose_json'); // Changed for word timestamps
+  formData.append('timestamp_granularities', 'word'); // Request word-level timestamps
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -55,26 +90,62 @@ async function transcribeAudio(audioBase64: string): Promise<string> {
   return result.text || '';
 }
 
-interface ConversationMessage {
-  role: 'agent' | 'user';
-  content: string;
-}
+// ============================================================================
+// Agent Response Generation
+// ============================================================================
 
-interface ScenarioConfig {
-  title: string;
-  goal: string;
-  slots: Record<string, string | null>;
-}
-
-async function getAgentResponse(
+async function getEnhancedAgentResponse(
   conversationHistory: ConversationMessage[],
-  scenario: ScenarioConfig,
-  turnNumber: number
-): Promise<string> {
+  scenario: EnhancedScenarioConfig,
+  turnNumber: number,
+  rulesState: UniversalRulesState,
+  maxTurns: number = 10
+): Promise<AgentTurnResponse> {
   console.log(`Getting agent response for turn ${turnNumber}...`);
   
-  const scenarioBrief = `${scenario.title}\nGoal: ${scenario.goal}`;
-  const systemPrompt = AGENT_SYSTEM_PROMPT + `\n\nScenario:\n${scenarioBrief}\n\nState to track (slots JSON):\n${JSON.stringify(scenario.slots)}\n\nThis is turn ${turnNumber}. Keep the conversation moving naturally.`;
+  // Get persona
+  const persona = PERSONA_LIBRARY[scenario.persona_id];
+  if (!persona) {
+    throw new Error(`Unknown persona: ${scenario.persona_id}`);
+  }
+  
+  // Build base system prompt with persona
+  let systemPrompt = buildPersonaSystemPrompt(
+    persona.parameters,
+    persona.name,
+    scenario.title,
+    scenario.goal,
+    scenario.slots
+  );
+  
+  // Add turn context
+  systemPrompt += buildTurnContext(turnNumber, maxTurns);
+  
+  // Check for repair event injection
+  let repair_event_introduced: string | undefined;
+  const plannedRepair = scenario.planned_repair_events?.find(
+    event => event.trigger_turn === turnNumber
+  );
+  if (plannedRepair && !rulesState.repair_events_introduced.includes(plannedRepair.event_id)) {
+    const repairInstruction = generateRepairEventPrompt(
+      plannedRepair.event_id as any,
+      plannedRepair.description
+    );
+    systemPrompt = addRepairEventInstruction(systemPrompt, plannedRepair.event_id, repairInstruction);
+    repair_event_introduced = plannedRepair.event_id;
+  }
+  
+  // Check for anti-stall hint
+  let hint_given = false;
+  const recentUserTurns = conversationHistory
+    .filter(m => m.role === 'user')
+    .slice(-2)
+    .map(m => m.content);
+    
+  if (shouldGiveAntiStallHint(rulesState, recentUserTurns)) {
+    systemPrompt = addAntiStallHintInstruction(systemPrompt, scenario.slots);
+    hint_given = true;
+  }
   
   // Convert to OpenAI format
   const messages = [
@@ -94,7 +165,9 @@ async function getAgentResponse(
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages,
-      max_tokens: 150,
+      max_tokens: persona.parameters.verbosity === 0 ? 50 : 
+                  persona.parameters.verbosity === 1 ? 100 :
+                  persona.parameters.verbosity === 2 ? 150 : 200,
       temperature: 0.8
     }),
   });
@@ -108,8 +181,29 @@ async function getAgentResponse(
   const result = await response.json();
   const agentMessage = result.choices?.[0]?.message?.content || '';
   console.log('Agent response:', agentMessage.substring(0, 100));
-  return agentMessage;
+  
+  // Extract turn metadata
+  const wordCount = agentMessage.split(/\s+/).length;
+  const hasQuestion = agentMessage.includes('?');
+  
+  return {
+    agentResponse: agentMessage,
+    repair_event_introduced,
+    hint_given,
+    turn_metadata: {
+      agent_word_count: wordCount,
+      question_asked: hasQuestion,
+    },
+  };
 }
+
+// ============================================================================
+// Scoring (keeping existing structure for now, will enhance in Phase 5)
+// ============================================================================
+
+const SCORING_SYSTEM_PROMPT = `You are scoring an A2-level French conversation. Output ONLY JSON.
+Do not reward fancy vocabulary. Reward understanding, repair, and staying on topic.
+False starts/repetitions are NOT penalized.`;
 
 async function scoreConversation(
   conversationHistory: ConversationMessage[],
@@ -131,17 +225,17 @@ async function scoreConversation(
     .join('\n');
   
   const userPrompt = `Score:
-- comprehension_task (0-45)
+- comprehension_task (0-50)
 - repair (0-30)
-- flow (0-25)
+- flow (0-20)
 
 Return JSON:
 {
   "overall": 0-100,
   "subs": {
-    "comprehension_task": {"score":0-45,"evidence":[]},
+    "comprehension_task": {"score":0-50,"evidence":[]},
     "repair": {"score":0-30,"evidence":[]},
-    "flow": {"score":0-25,"evidence":[]}
+    "flow": {"score":0-20,"evidence":[]}
   },
   "flags": [],
   "confidence": 0-1
@@ -234,6 +328,10 @@ ${turnByTurn}`;
   return args;
 }
 
+// ============================================================================
+// Main Handler
+// ============================================================================
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -247,7 +345,9 @@ serve(async (req) => {
       conversationHistory,
       scenario,
       turnNumber,
-      recordingId 
+      recordingId,
+      rulesState,
+      maxTurns
     } = await req.json();
 
     console.log(`Conversation action: ${action}`);
@@ -293,14 +393,36 @@ serve(async (req) => {
         );
       }
 
-      const agentResponse = await getAgentResponse(
+      // Initialize rules state if not provided
+      const currentRulesState: UniversalRulesState = rulesState || {
+        silent_turns_count: 0,
+        hint_given: false,
+        off_topic_redirect_used: false,
+        repair_events_introduced: [],
+      };
+
+      const agentTurnResponse = await getEnhancedAgentResponse(
         conversationHistory,
         scenario,
-        turnNumber || conversationHistory.length
+        turnNumber || conversationHistory.length,
+        currentRulesState,
+        maxTurns || 10
       );
       
+      // Update rules state
+      if (agentTurnResponse.repair_event_introduced) {
+        currentRulesState.repair_events_introduced.push(agentTurnResponse.repair_event_introduced);
+      }
+      if (agentTurnResponse.hint_given) {
+        currentRulesState.hint_given = true;
+      }
+      
       return new Response(
-        JSON.stringify({ success: true, agentResponse }),
+        JSON.stringify({ 
+          success: true, 
+          ...agentTurnResponse,
+          rulesState: currentRulesState
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

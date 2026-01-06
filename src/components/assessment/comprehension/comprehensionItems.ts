@@ -1,155 +1,310 @@
 export interface ComprehensionItem {
   id: string;
-  context: string;
-  audioScript: string;
-  keyFacts: string[];
-  acceptableIntents: string[];
-  goodResponses: string[];
+  language: string;
+  cefr_level: string;
+  transcript_fr: string;
+  word_count: number;
+  estimated_duration_s: number;
+  prompt: { fr: string; en: string };
+  options: Array<{ id: string; fr: string; en: string }>;
+  answer_key: { correct_option_ids: string[] };
 }
 
 export const comprehensionItems: ComprehensionItem[] = [
   {
-    id: "L1",
-    context: "Tu es à la boulangerie.",
-    audioScript: "Bonjour ! Il n'y a plus de croissants. Il reste des pains au chocolat. Vous en voulez ?",
-    keyFacts: [
-      "plus de croissants",
-      "alternative disponible: pains au chocolat",
-      "question: en voulez-vous"
+    id: "lc_fr_a1_0001",
+    language: "fr-FR",
+    cefr_level: "A1",
+    transcript_fr: "Il pleut fort. Marie cherche vite son parapluie, mais il est dans la voiture.",
+    word_count: 14,
+    estimated_duration_s: 5.6,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Il pleut fort.", en: "It is raining hard." },
+      { id: "o2", fr: "Marie cherche son parapluie.", en: "Marie is looking for her umbrella." },
+      { id: "o3", fr: "Le parapluie est dans la voiture.", en: "The umbrella is in the car." },
+      { id: "o4", fr: "Marie a oublié son parapluie au travail.", en: "Marie forgot her umbrella at work." },
+      { id: "o5", fr: "Marie cherche ses clés.", en: "Marie is looking for her keys." },
+      { id: "o6", fr: "Il fait très beau aujourd'hui.", en: "The weather is very sunny today." },
+      { id: "o7", fr: "Le parapluie est cassé.", en: "The umbrella is broken." },
+      { id: "o8", fr: "Marie va à la plage.", en: "Marie is going to the beach." }
     ],
-    acceptableIntents: ["answer_yes", "answer_no", "ask_about_other_options"],
-    goodResponses: [
-      "Oui, je prends deux pains au chocolat, s'il vous plaît.",
-      "Non merci. Vous avez autre chose ?"
-    ]
+    answer_key: { correct_option_ids: ["o1", "o2", "o3"] }
   },
   {
-    id: "L2",
-    context: "Tu es en retard pour un rendez-vous.",
-    audioScript: "Salut ! Je suis déjà là. Tu arrives dans combien de minutes ?",
-    keyFacts: ["interlocuteur déjà là", "demande ETA"],
-    acceptableIntents: ["give_eta", "apologize_and_give_eta", "ask_to_move_time"],
-    goodResponses: [
-      "Désolé, j'arrive dans dix minutes.",
-      "Je suis dans le métro, j'arrive vers 18h10."
-    ]
+    id: "lc_fr_a1_0002",
+    language: "fr-FR",
+    cefr_level: "A1",
+    transcript_fr: "Au café, Paul commande un thé sans sucre, attend deux minutes, puis demande l'addition et son ticket avant de partir.",
+    word_count: 20,
+    estimated_duration_s: 8.0,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Paul commande un thé sans sucre.", en: "Paul orders a tea with no sugar." },
+      { id: "o2", fr: "Il attend deux minutes.", en: "He waits two minutes." },
+      { id: "o3", fr: "Il demande l'addition et le ticket.", en: "He asks for the bill and the receipt." },
+      { id: "o4", fr: "Paul commande un café au lait.", en: "Paul orders a coffee with milk." },
+      { id: "o5", fr: "Il demande la carte des desserts.", en: "He asks for the dessert menu." },
+      { id: "o6", fr: "Il reste au café pendant une heure.", en: "He stays at the cafe for an hour." },
+      { id: "o7", fr: "Il part sans payer.", en: "He leaves without paying." },
+      { id: "o8", fr: "Il demande seulement un verre d'eau.", en: "He only asks for a glass of water." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3"] }
   },
   {
-    id: "L3",
-    context: "Tu veux réserver au restaurant.",
-    audioScript: "On est complet ce soir. Mais demain à 19h, c'est possible.",
-    keyFacts: ["pas de place ce soir", "option demain 19h"],
-    acceptableIntents: ["accept_tomorrow", "decline", "ask_alternative_time"],
-    goodResponses: [
-      "D'accord pour demain à 19h. Pour deux personnes.",
-      "Ah mince. Vous avez une autre heure demain ?"
-    ]
+    id: "lc_fr_a2_0003",
+    language: "fr-FR",
+    cefr_level: "A2",
+    transcript_fr: "Dans le bus, quelqu'un a oublié un sac bleu sous un siège. Le chauffeur l'annonce au micro, le met devant lui, et dit de le récupérer au terminus.",
+    word_count: 28,
+    estimated_duration_s: 11.2,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Quelqu'un a oublié un sac bleu.", en: "Someone forgot a blue bag." },
+      { id: "o2", fr: "Le chauffeur l'annonce au micro.", en: "The driver announces it over the speaker." },
+      { id: "o3", fr: "Le chauffeur garde le sac devant lui.", en: "The driver keeps the bag at the front." },
+      { id: "o4", fr: "On peut récupérer le sac au terminus.", en: "You can pick up the bag at the end of the line." },
+      { id: "o5", fr: "Le sac est rouge.", en: "The bag is red." },
+      { id: "o6", fr: "Le chauffeur jette le sac.", en: "The driver throws the bag away." },
+      { id: "o7", fr: "Il faut aller au commissariat pour le récupérer.", en: "You must go to the police station to retrieve it." },
+      { id: "o8", fr: "Le bus s'arrête tout de suite pour chercher le propriétaire.", en: "The bus stops immediately to find the owner." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L4",
-    context: "Tu es dans un bus.",
-    audioScript: "Prochain arrêt : Gare du Nord. Attention, les portes vont se fermer.",
-    keyFacts: ["next stop Gare du Nord", "doors closing soon"],
-    acceptableIntents: ["confirm_stop", "ask_if_need_get_off", "react_safely"],
-    goodResponses: [
-      "Merci. C'est ici pour la Gare du Nord ?",
-      "D'accord, je descends au prochain arrêt."
-    ]
+    id: "lc_fr_a2_0004",
+    language: "fr-FR",
+    cefr_level: "A2",
+    transcript_fr: "On se retrouve à la station République à 18 h, près de la sortie 3. Désolé, mon bus est bloqué dans les embouteillages, je serai dix minutes en retard. Ne pars pas.",
+    word_count: 32,
+    estimated_duration_s: 12.8,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Le rendez-vous est à la station République.", en: "The meeting point is République station." },
+      { id: "o2", fr: "Le rendez-vous est à 18 h.", en: "The meeting is at 6 pm." },
+      { id: "o3", fr: "La personne aura environ dix minutes de retard.", en: "The person will be about ten minutes late." },
+      { id: "o4", fr: "Son bus est bloqué dans les embouteillages.", en: "Their bus is stuck in traffic." },
+      { id: "o5", fr: "Le rendez-vous est à 8 h.", en: "The meeting is at 8 am." },
+      { id: "o6", fr: "Ils se retrouvent à la station Bastille.", en: "They are meeting at Bastille station." },
+      { id: "o7", fr: "La personne est déjà arrivée.", en: "The person has already arrived." },
+      { id: "o8", fr: "On lui dit de ne pas attendre.", en: "They tell the other person not to wait." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L5",
-    context: "Ton ami te propose un plan.",
-    audioScript: "On peut aller au parc, mais il va pleuvoir. Tu préfères un café ?",
-    keyFacts: ["parc possible", "risque pluie", "alternative: café", "asks preference"],
-    acceptableIntents: ["choose_option", "suggest_third_option", "ask_time/place"],
-    goodResponses: [
-      "Je préfère un café, il va pleuvoir.",
-      "On va au café. Tu veux aller où ?"
-    ]
+    id: "lc_fr_a2_0005",
+    language: "fr-FR",
+    cefr_level: "A2",
+    transcript_fr: "Une voisine crie dans la rue : son chat est coincé dans un arbre depuis une heure. Elle veut appeler les pompiers, mais elle ne connaît pas le numéro et son téléphone est presque déchargé. Elle demande à un passant de l'aider.",
+    word_count: 42,
+    estimated_duration_s: 16.8,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Un chat est coincé dans un arbre.", en: "A cat is stuck in a tree." },
+      { id: "o2", fr: "Elle veut appeler les pompiers.", en: "She wants to call the fire department." },
+      { id: "o3", fr: "Elle ne connaît pas le numéro à appeler.", en: "She doesn't know the number to call." },
+      { id: "o4", fr: "Son téléphone est presque déchargé.", en: "Her phone is almost out of battery." },
+      { id: "o5", fr: "Un chien est coincé dans un arbre.", en: "A dog is stuck in a tree." },
+      { id: "o6", fr: "Les pompiers sont déjà en route.", en: "The fire department is already on the way." },
+      { id: "o7", fr: "Elle veut appeler la police pour un vol.", en: "She wants to call the police about a theft." },
+      { id: "o8", fr: "Elle cherche un taxi.", en: "She is looking for a taxi." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L6",
-    context: "Tu es au travail.",
-    audioScript: "La réunion est déplacée à 15h, pas à 14h. Tu peux confirmer ?",
-    keyFacts: ["meeting moved to 15h", "not 14h", "asks confirmation"],
-    acceptableIntents: ["confirm", "ask_details"],
-    goodResponses: [
-      "Oui, confirmé : 15h. Merci.",
-      "D'accord à 15h. C'est où exactement ?"
-    ]
+    id: "lc_fr_a2_0006",
+    language: "fr-FR",
+    cefr_level: "A2",
+    transcript_fr: "On décale la réunion de cet après-midi à demain matin, à 9 h, parce que le client est malade. J'envoie tout de suite un e-mail avec la nouvelle heure et le lien visio. Garde ton après-midi libre.",
+    word_count: 37,
+    estimated_duration_s: 14.8,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "La réunion est déplacée à demain matin, à 9 h.", en: "The meeting is moved to tomorrow morning at 9." },
+      { id: "o2", fr: "Le client est malade.", en: "The client is sick." },
+      { id: "o3", fr: "Un e-mail va confirmer la nouvelle heure.", en: "An email will confirm the new time." },
+      { id: "o4", fr: "Le lien visio est envoyé par e-mail.", en: "The video-call link is sent by email." },
+      { id: "o5", fr: "La réunion reste cet après-midi.", en: "The meeting stays this afternoon." },
+      { id: "o6", fr: "La réunion est annulée définitivement.", en: "The meeting is canceled forever." },
+      { id: "o7", fr: "Le client est en vacances.", en: "The client is on vacation." },
+      { id: "o8", fr: "La réunion est déplacée à ce soir.", en: "The meeting is moved to tonight." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L7",
-    context: "Tu as acheté un billet de train.",
-    audioScript: "Votre train a dix minutes de retard. Il partira voie 6.",
-    keyFacts: ["10 min delay", "platform 6"],
-    acceptableIntents: ["acknowledge", "ask_platform_confirmation"],
-    goodResponses: [
-      "D'accord, voie 6. Merci.",
-      "Il a dix minutes de retard, c'est ça ?"
-    ]
+    id: "lc_fr_b1_0007",
+    language: "fr-FR",
+    cefr_level: "B1",
+    transcript_fr: "Annonce en gare : le train pour Lyon de 17 h 12 est annulé à cause d'un problème technique. Un bus de remplacement part du quai 5 dans vingt minutes. Pour un remboursement, allez au guichet avec votre billet. Les autres trains restent à l'heure.",
+    word_count: 45,
+    estimated_duration_s: 18.0,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Le train pour Lyon de 17 h 12 est annulé.", en: "The 5:12 pm train to Lyon is canceled." },
+      { id: "o2", fr: "C'est à cause d'un problème technique.", en: "It is due to a technical problem." },
+      { id: "o3", fr: "Un bus de remplacement part du quai 5.", en: "A replacement bus leaves from platform 5." },
+      { id: "o4", fr: "On peut demander un remboursement au guichet.", en: "You can request a refund at the ticket office." },
+      { id: "o5", fr: "Le train a seulement dix minutes de retard.", en: "The train is only ten minutes late." },
+      { id: "o6", fr: "Le bus part du quai 2.", en: "The bus leaves from platform 2." },
+      { id: "o7", fr: "Le remboursement se fait uniquement en ligne.", en: "Refunds are online only." },
+      { id: "o8", fr: "Tous les trains sont annulés aujourd'hui.", en: "All trains are canceled today." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L8",
-    context: "Tu es chez un médecin.",
-    audioScript: "Vous avez de la fièvre depuis quand ? Et vous avez mal où ?",
-    keyFacts: ["asks since when fever", "asks where pain is"],
-    acceptableIntents: ["answer_both", "ask_clarification"],
-    goodResponses: [
-      "Depuis deux jours, et j'ai mal à la gorge.",
-      "Depuis hier. J'ai mal au ventre."
-    ]
+    id: "lc_fr_b1_0008",
+    language: "fr-FR",
+    cefr_level: "B1",
+    transcript_fr: "Dans la colocation, ils se disputent la facture d'électricité : l'un dit qu'il ne cuisine jamais, l'autre laisse la lumière allumée. Après quelques minutes, ils se calment et décident de suivre leur consommation avec une appli pendant un mois, à partir d'aujourd'hui, puis de partager la facture selon l'usage réel.",
+    word_count: 50,
+    estimated_duration_s: 20.0,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Ils se disputent la facture d'électricité.", en: "They argue about the electricity bill." },
+      { id: "o2", fr: "Ils décident de suivre leur consommation avec une appli.", en: "They decide to track their usage with an app." },
+      { id: "o3", fr: "Ils le font pendant un mois.", en: "They do it for one month." },
+      { id: "o4", fr: "Ils partageront la facture selon l'usage réel.", en: "They will split the bill based on actual usage." },
+      { id: "o5", fr: "Ils se disputent la facture d'eau.", en: "They argue about the water bill." },
+      { id: "o6", fr: "Ils décident de ne plus payer la facture.", en: "They decide to stop paying the bill." },
+      { id: "o7", fr: "Ils partagent forcément 50/50.", en: "They will definitely split it 50/50." },
+      { id: "o8", fr: "Ils achètent un nouveau frigo.", en: "They buy a new fridge." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L9",
-    context: "Tu appelles un service client.",
-    audioScript: "Je peux vous aider, mais j'ai besoin de votre numéro de commande.",
-    keyFacts: ["can help", "needs order number"],
-    acceptableIntents: ["provide_number", "ask_where_find_number"],
-    goodResponses: [
-      "Oui, c'est le numéro 12345.",
-      "Il est où le numéro de commande, s'il vous plaît ?"
-    ]
+    id: "lc_fr_a2_0009",
+    language: "fr-FR",
+    cefr_level: "A2",
+    transcript_fr: "Au restaurant, elle précise qu'elle est allergique aux noix. Le serveur part vérifier en cuisine si la sauce contient des amandes. Il revient : il y en a. Elle change de plat et prend une salade sans sauce.",
+    word_count: 38,
+    estimated_duration_s: 15.2,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Elle est allergique aux noix.", en: "She is allergic to nuts." },
+      { id: "o2", fr: "Le serveur vérifie la sauce en cuisine.", en: "The waiter checks the sauce in the kitchen." },
+      { id: "o3", fr: "La sauce contient des amandes.", en: "The sauce contains almonds." },
+      { id: "o4", fr: "Elle choisit une salade sans sauce.", en: "She chooses a salad with no sauce." },
+      { id: "o5", fr: "Elle est allergique au gluten.", en: "She is allergic to gluten." },
+      { id: "o6", fr: "La sauce ne contient aucune amande.", en: "The sauce contains no almonds." },
+      { id: "o7", fr: "Elle garde le même plat.", en: "She keeps the same dish." },
+      { id: "o8", fr: "Elle commande un dessert aux noix.", en: "She orders a dessert with nuts." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L10",
-    context: "Tu es invité(e) à une soirée.",
-    audioScript: "Ça commence à 20h, mais si tu peux, viens un peu plus tôt.",
-    keyFacts: ["starts 20h", "request to come earlier if possible"],
-    acceptableIntents: ["accept_earlier", "decline_earlier_with_reason", "ask_how_early"],
-    goodResponses: [
-      "Ok, je viens vers 19h30.",
-      "Je peux pas avant 20h, désolé."
-    ]
+    id: "lc_fr_b1_0010",
+    language: "fr-FR",
+    cefr_level: "B1",
+    transcript_fr: "Le recruteur propose un entretien lundi à 11 h pour un poste de chef de projet. Le candidat demande si c'est 100 % à distance ; on lui répond : hybride, trois jours au bureau. Il demande la fourchette de salaire. Ils fixent un second appel mercredi avec la RH.",
+    word_count: 50,
+    estimated_duration_s: 20.0,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Un entretien est proposé lundi à 11 h.", en: "An interview is proposed for Monday at 11." },
+      { id: "o2", fr: "On lui répond : hybride, trois jours au bureau.", en: "They answer: hybrid, three days in the office." },
+      { id: "o3", fr: "Le candidat demande la fourchette de salaire.", en: "The candidate asks for the salary range." },
+      { id: "o4", fr: "Ils fixent un second appel mercredi avec la RH.", en: "They schedule a second call on Wednesday with HR." },
+      { id: "o5", fr: "On lui répond : c'est totalement à distance.", en: "They answer: it is fully remote." },
+      { id: "o6", fr: "L'entretien est prévu dimanche matin.", en: "The interview is set for Sunday morning." },
+      { id: "o7", fr: "Ils discutent d'un poste de serveur au restaurant.", en: "They discuss a waiter job at a restaurant." },
+      { id: "o8", fr: "Le recruteur annule et ne rappelle pas.", en: "The recruiter cancels and never calls back." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L11",
-    context: "Tu es dans un magasin de vêtements.",
-    audioScript: "Cette taille est petite. Je vous conseille une taille au-dessus.",
-    keyFacts: ["current size small", "advises one size up"],
-    acceptableIntents: ["accept_advice", "ask_to_try_other_size"],
-    goodResponses: [
-      "D'accord, je prends la taille au-dessus.",
-      "Vous avez la taille M à essayer ?"
-    ]
+    id: "lc_fr_b2_0011",
+    language: "fr-FR",
+    cefr_level: "B2",
+    transcript_fr: "Au magasin, Léa revient avec un casque audio qui grésille. Elle veut être remboursée, mais elle a perdu le ticket de caisse. Le vendeur propose un échange ou un avoir. Elle insiste pour un remboursement sur sa carte, alors il appelle la responsable.",
+    word_count: 43,
+    estimated_duration_s: 17.2,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "Le casque audio grésille.", en: "The headphones crackle." },
+      { id: "o2", fr: "Léa a perdu le ticket de caisse.", en: "Léa lost the receipt." },
+      { id: "o3", fr: "Le vendeur propose un échange ou un avoir.", en: "The seller offers an exchange or store credit." },
+      { id: "o4", fr: "Le vendeur appelle la responsable.", en: "The seller calls the manager." },
+      { id: "o5", fr: "Léa a le ticket de caisse.", en: "Léa has the receipt." },
+      { id: "o6", fr: "Le casque fonctionne parfaitement.", en: "The headphones work perfectly." },
+      { id: "o7", fr: "Le vendeur lui rend l'argent tout de suite, sans question.", en: "The seller refunds her immediately, no questions asked." },
+      { id: "o8", fr: "Elle vient juste comparer des prix.", en: "She only came to compare prices." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   },
   {
-    id: "L12",
-    context: "Tu es chez un ami.",
-    audioScript: "Je suis fatigué, mais je veux quand même sortir. Tu proposes quoi ?",
-    keyFacts: ["friend tired", "still wants to go out", "asks suggestion"],
-    acceptableIntents: ["suggest_low_energy_plan", "ask_preference"],
-    goodResponses: [
-      "On peut aller boire un thé tranquille.",
-      "Tu préfères un film ou un café ?"
-    ]
+    id: "lc_fr_b2_0012",
+    language: "fr-FR",
+    cefr_level: "B2",
+    transcript_fr: "Lors d'une réunion de quartier, on propose de fermer la rue aux voitures le week-end. Certains commerçants sont pour, d'autres craignent de perdre des clients. La mairie propose un essai d'un mois et un vote ensuite. Un habitant rappelle qu'il faut garder un accès pour les ambulances.",
+    word_count: 47,
+    estimated_duration_s: 18.8,
+    prompt: {
+      fr: "Que se passe-t-il ? Sélectionne toutes les affirmations vraies. Il peut y en avoir plusieurs.",
+      en: "What is going on? Select all statements that are true. There may be more than one."
+    },
+    options: [
+      { id: "o1", fr: "On propose de fermer la rue aux voitures le week-end.", en: "They propose closing the street to cars on weekends." },
+      { id: "o2", fr: "Certains commerçants sont pour, d'autres sont inquiets.", en: "Some shop owners support it; others are worried." },
+      { id: "o3", fr: "La mairie propose un essai d'un mois, puis un vote.", en: "City hall proposes a one-month trial, then a vote." },
+      { id: "o4", fr: "Il faut garder un accès pour les ambulances.", en: "They must keep access for ambulances." },
+      { id: "o5", fr: "La rue sera fermée tous les jours, toute l'année.", en: "The street will be closed every day all year." },
+      { id: "o6", fr: "Tout le monde est d'accord immédiatement.", en: "Everyone agrees immediately." },
+      { id: "o7", fr: "La mairie abandonne l'idée dès maintenant.", en: "City hall drops the idea right away." },
+      { id: "o8", fr: "Ils parlent d'ouvrir une nouvelle autoroute.", en: "They talk about building a new highway." }
+    ],
+    answer_key: { correct_option_ids: ["o1", "o2", "o3", "o4"] }
   }
 ];
 
-// Get a subset of items for assessment (6 items)
+// Get a subset of items for assessment (6 items - mix of levels)
 export const getAssessmentItems = (): ComprehensionItem[] => {
-  // Return items L1, L3, L5, L7, L9, L11 for variety
-  return comprehensionItems.filter((_, index) => index % 2 === 0);
+  // Return a mix: 2 A1, 2 A2, 1 B1, 1 B2
+  const a1Items = comprehensionItems.filter(item => item.cefr_level === "A1");
+  const a2Items = comprehensionItems.filter(item => item.cefr_level === "A2");
+  const b1Items = comprehensionItems.filter(item => item.cefr_level === "B1");
+  const b2Items = comprehensionItems.filter(item => item.cefr_level === "B2");
+  
+  return [
+    a1Items[0], // lc_fr_a1_0001
+    a1Items[1], // lc_fr_a1_0002
+    a2Items[0], // lc_fr_a2_0003
+    a2Items[1], // lc_fr_a2_0004
+    b1Items[0], // lc_fr_b1_0007
+    b2Items[0]  // lc_fr_b2_0011
+  ];
 };
 
 // Get item by ID

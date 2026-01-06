@@ -155,39 +155,89 @@ Grammar-focused prompts testing:
 
 ---
 
-## 5. Conversation Module
+## 5. Conversation Module (Enhanced with Calibration Console)
 
 **Location:** `src/components/assessment/conversation/`
 
 ### Task
 
-Multi-turn conversation with AI agent.
+Multi-turn conversation with AI agent using persona-based behavior system.
 
-### Scenarios
-- Restaurant ordering
-- Doctor's appointment
-- Social situations
-- Work contexts
+### Personas (15 Presets)
+
+The conversation agent can adopt different personas, each with standardized parameters:
+
+**Service/Support:**
+- P01: Friendly Support Agent (Tier 1 baseline)
+- P02: Busy Agent (time-pressured)
+- P03: Policy Gatekeeper (negotiation)
+- P04: Confused Agent (repair-heavy)
+- P05: Supervisor Escalation (formal)
+- P06: Upsell Sales Rep (distraction)
+
+**Workplace:**
+- P07: Supportive Colleague
+- P08: Stressed Manager (pushback)
+- P09: Skeptical Stakeholder
+
+**Social:**
+- P10: Friendly Friend
+- P11: Disappointed Friend (emotional friction)
+- P12: Shy / Minimal Responder
+
+**Administrative:**
+- P13: Bureaucrat
+- P14: Automated IVR
+- P15: Passive Listener (leadership test)
+
+### Scenarios (9 Total, 3 per Tier)
+
+**Tier 1:** Friendly, supportive scenarios
+**Tier 2:** Moderate friction (busy agents, policies)
+**Tier 3:** High friction (pushback, negotiation, emotion)
+
+Each scenario includes:
+- Required slots to fill
+- Planned repair events (≥2)
+- End conditions
+- Persona assignment
 
 ### Flow
-1. AI agent starts conversation
+1. AI agent starts with assigned persona behavior
 2. User responds (audio or text)
-3. AI responds based on context
-4. Continues for multiple turns
-5. Final scoring
+3. AI responds following persona parameters
+4. Universal exam rules apply (no teaching, info gating, repair events)
+5. Scoring with detailed metrics
 
-### Scoring
+### Scoring (Precise 3-Part System)
 
-**AI Analysis:**
-- Appropriateness of responses
-- Vocabulary usage
-- Turn-taking
-- Goal completion
-- Natural flow
+**Comprehension (0-50):**
+- Answers prompt rate
+- Detail tracking
+- Slot coverage
+
+**Repair (0-30):**
+- Repair events resolved
+- Repair strategy usage
+- Pattern matching
+
+**Flow (0-20):**
+- Questions asked
+- Proposals made
+- Closing attempts
 
 **Files:**
 - `ConversationModule.tsx` - Main component
-- `conversationScenarios.ts` - Scenario definitions
+- `conversationScenarios.ts` - Enhanced scenario definitions
+- `personaLibrary.ts` - 15 persona presets
+- `universalRules.ts` - Exam rules system
+- `repairEventLibrary.ts` - Repair patterns
+- Edge function files in `supabase/functions/conversation-agent/`:
+  - `promptBuilder.ts` - Persona-aware prompts
+  - `moveTagger.ts` - Conversation move detection
+  - `conversationScoring.ts` - Precise scoring
+
+**See also:** `docs/CALIBRATION_MIGRATION_NOTES.md` for complete persona reference
 
 ---
 

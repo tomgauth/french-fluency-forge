@@ -167,18 +167,10 @@ const Results = () => {
           return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
         };
 
-        // Calculate combined confidence score (50% questionnaire + 50% speaking)
-        const speakingConfidence = getAvgScore("confidence");
+        // Confidence now comes exclusively from the questionnaire
         const questionnaireConfidence = questionnaireData?.normalized_score ?? null;
-        
-        let combinedConfidenceScore: number | null = null;
-        if (speakingConfidence !== null && questionnaireConfidence !== null) {
-          combinedConfidenceScore = Math.round((speakingConfidence + questionnaireConfidence) / 2);
-        } else if (speakingConfidence !== null) {
-          combinedConfidenceScore = speakingConfidence;
-        } else if (questionnaireConfidence !== null) {
-          combinedConfidenceScore = Math.round(questionnaireConfidence);
-        }
+        const combinedConfidenceScore =
+          questionnaireConfidence !== null ? Math.round(questionnaireConfidence) : null;
 
         // TODO: Fetch pronunciation scores when available
         const pronunciationScore: number | null = null;

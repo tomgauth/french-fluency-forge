@@ -180,15 +180,23 @@ export type Database = {
           ai_confidence: number | null
           ai_feedback_fr: string | null
           ai_score: number | null
+          asr_version: string | null
           attempt_number: number
           audio_played_at: string | null
           audio_storage_path: string | null
           completed_at: string | null
+          correct_option_ids: string[] | null
+          correct_selections: string[] | null
           created_at: string
           error_message: string | null
           id: string
+          incorrect_selections: string[] | null
           intent_match: Json | null
           item_id: string
+          missed_selections: string[] | null
+          prompt_version: string | null
+          scorer_version: string | null
+          selected_option_ids: string[] | null
           session_id: string
           status: string
           superseded: boolean
@@ -201,15 +209,23 @@ export type Database = {
           ai_confidence?: number | null
           ai_feedback_fr?: string | null
           ai_score?: number | null
+          asr_version?: string | null
           attempt_number?: number
           audio_played_at?: string | null
           audio_storage_path?: string | null
           completed_at?: string | null
+          correct_option_ids?: string[] | null
+          correct_selections?: string[] | null
           created_at?: string
           error_message?: string | null
           id?: string
+          incorrect_selections?: string[] | null
           intent_match?: Json | null
           item_id: string
+          missed_selections?: string[] | null
+          prompt_version?: string | null
+          scorer_version?: string | null
+          selected_option_ids?: string[] | null
           session_id: string
           status?: string
           superseded?: boolean
@@ -222,15 +238,23 @@ export type Database = {
           ai_confidence?: number | null
           ai_feedback_fr?: string | null
           ai_score?: number | null
+          asr_version?: string | null
           attempt_number?: number
           audio_played_at?: string | null
           audio_storage_path?: string | null
           completed_at?: string | null
+          correct_option_ids?: string[] | null
+          correct_selections?: string[] | null
           created_at?: string
           error_message?: string | null
           id?: string
+          incorrect_selections?: string[] | null
           intent_match?: Json | null
           item_id?: string
+          missed_selections?: string[] | null
+          prompt_version?: string | null
+          scorer_version?: string | null
+          selected_option_ids?: string[] | null
           session_id?: string
           status?: string
           superseded?: boolean
@@ -792,6 +816,41 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scoring_traces: {
+        Row: {
+          created_at: string | null
+          id: string
+          module_type: string
+          session_id: string | null
+          trace_data: Json
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          module_type: string
+          session_id?: string | null
+          trace_data: Json
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          module_type?: string
+          session_id?: string | null
+          trace_data?: Json
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scoring_traces_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_sessions"
             referencedColumns: ["id"]
           },
         ]

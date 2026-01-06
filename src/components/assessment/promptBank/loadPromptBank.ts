@@ -15,6 +15,7 @@ import confidenceBank from './promptBanks/confidence.json';
 import syntaxBank from './promptBanks/syntax.json';
 import conversationBank from './promptBanks/conversation.json';
 import comprehensionBank from './promptBanks/comprehension.json';
+import speakingBank from './promptBanks/speaking.json';
 
 const promptBanks: Record<ModuleType, PromptBank> = {
   fluency: fluencyBank as PromptBank,
@@ -23,6 +24,7 @@ const promptBanks: Record<ModuleType, PromptBank> = {
   syntax: syntaxBank as PromptBank,
   conversation: conversationBank as PromptBank,
   comprehension: comprehensionBank as PromptBank,
+  speaking: speakingBank as PromptBank,
 };
 
 /**
@@ -114,6 +116,6 @@ export function getPromptCounts(): Record<ModuleType, number> {
     syntax: getPrompts('syntax').length,
     conversation: getPrompts('conversation').length,
     comprehension: getPrompts('comprehension').length,
+    speaking: getPrompts('speaking').length,
   };
 }
-

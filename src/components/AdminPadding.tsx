@@ -14,7 +14,7 @@ export function AdminPadding({ children, className = '' }: AdminPaddingProps) {
   const { showDevTools } = useAdminMode();
 
   return (
-    <div className={`${showDevTools ? 'pt-12' : ''} ${className}`}>
+    <div className={`${showDevTools ? 'pt-20' : ''} ${className}`}>
       {children}
     </div>
   );
