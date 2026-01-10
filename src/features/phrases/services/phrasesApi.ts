@@ -1,16 +1,16 @@
 /**
- * Phrases API - Local-only implementation
- * The phrases feature uses local storage for now (Supabase tables not yet created)
+ * Phrases API - Supabase implementation with localStorage fallback
+ * Attempts to use Supabase tables, falls back to localStorage if tables don't exist
  */
 
+import { supabase } from '@/integrations/supabase/client';
 import type { MemberPhraseCard, Phrase, PhraseReviewLog, PhraseSettings } from '../types';
 
-// Note: These tables don't exist in the database yet:
+// Tables created by migration 20260102164444_phrases_learning_ladder.sql:
+// - phrases
 // - member_phrase_cards
 // - phrase_review_logs  
 // - member_phrase_settings
-// - phrases
-// This file provides stub implementations that throw errors to surface if used
 
 type DbMemberPhraseCard = Record<string, unknown> & {
   phrase?: Record<string, unknown>;
@@ -112,20 +112,74 @@ export function mapMemberCardToDb(card: MemberPhraseCard) {
   };
 }
 
-// Stub: Tables not created yet - returns empty data
-export async function fetchMemberCardsWithPhrases(_memberId: string): Promise<{
+// Note: Using type assertion for Supabase client because the generated types
+// may not include phrases tables until `supabase gen types typescript` is run
+// after the phrases_learning_ladder migration is applied.
+// This allows the code to work regardless of migration state.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any;
+
+// Fetch member cards with phrases from Supabase
+export async function fetchMemberCardsWithPhrases(memberId: string): Promise<{
   cards: MemberPhraseCard[];
   phraseMap: Record<string, Phrase>;
 }> {
-  // Tables don't exist yet - return empty
-  console.warn('[phrasesApi] member_phrase_cards table not yet created - using local storage only');
-  return { cards: [], phraseMap: {} };
+  try {
+    // Try to fetch from Supabase
+    const { data, error } = await db
+      .from('member_phrase_cards')
+      .select('*, phrase:phrases(*)')
+      .eq('member_id', memberId);
+
+    if (error) {
+      // Table might not exist, fall back to localStorage
+      console.warn('[phrasesApi] Error fetching cards, falling back to localStorage:', error.message);
+      return { cards: [], phraseMap: {} };
+    }
+
+    if (!data || data.length === 0) {
+      return { cards: [], phraseMap: {} };
+    }
+
+    const cards: MemberPhraseCard[] = [];
+    const phraseMap: Record<string, Phrase> = {};
+
+    for (const row of data as DbMemberPhraseCard[]) {
+      cards.push(mapDbCardToMemberCard(row));
+      if (row.phrase) {
+        const phrase = mapPhraseRow(row.phrase);
+        phraseMap[phrase.id] = phrase;
+      }
+    }
+
+    return { cards, phraseMap };
+  } catch (err) {
+    console.warn('[phrasesApi] fetchMemberCardsWithPhrases failed:', err);
+    return { cards: [], phraseMap: {} };
+  }
 }
 
-// Stub: Tables not created yet - no-op
-export async function upsertMemberCards(_cards: MemberPhraseCard[]) {
-  console.warn('[phrasesApi] member_phrase_cards table not yet created - changes stored locally only');
-  return { data: null, error: null };
+// Upsert member cards to Supabase
+export async function upsertMemberCards(cards: MemberPhraseCard[]) {
+  if (cards.length === 0) {
+    return { data: null, error: null };
+  }
+
+  try {
+    const dbCards = cards.map(mapMemberCardToDb);
+    const { data, error } = await db
+      .from('member_phrase_cards')
+      .upsert(dbCards, { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[phrasesApi] Error upserting cards:', error.message);
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.warn('[phrasesApi] upsertMemberCards failed:', err);
+    return { data: null, error: err };
+  }
 }
 
 export function mapLogToDb(log: PhraseReviewLog) {
@@ -161,23 +215,123 @@ export function mapLogToDb(log: PhraseReviewLog) {
   };
 }
 
-// Stub: Tables not created yet - no-op
-export async function insertReviewLog(_log: PhraseReviewLog) {
-  console.warn('[phrasesApi] phrase_review_logs table not yet created - log stored locally only');
-  return { data: null, error: null };
+// Insert review log to Supabase
+export async function insertReviewLog(log: PhraseReviewLog) {
+  try {
+    const dbLog = mapLogToDb(log);
+    const { data, error } = await db
+      .from('phrase_review_logs')
+      .insert(dbLog);
+
+    if (error) {
+      console.warn('[phrasesApi] Error inserting review log:', error.message);
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.warn('[phrasesApi] insertReviewLog failed:', err);
+    return { data: null, error: err };
+  }
 }
 
-// Stub: Returns default settings since table doesn't exist
+// Fetch member phrase settings from Supabase
 export async function fetchMemberPhraseSettings(memberId: string): Promise<PhraseSettings> {
-  console.warn('[phrasesApi] member_phrase_settings table not yet created - using defaults');
-  return {
-    member_id: memberId,
-    ...DEFAULT_SETTINGS,
-  };
+  try {
+    const { data, error } = await db
+      .from('member_phrase_settings')
+      .select('*')
+      .eq('member_id', memberId)
+      .single();
+
+    if (error || !data) {
+      // Return defaults if not found
+      return {
+        member_id: memberId,
+        ...DEFAULT_SETTINGS,
+      };
+    }
+
+    return {
+      member_id: data.member_id,
+      new_per_day: data.new_per_day ?? DEFAULT_SETTINGS.new_per_day,
+      reviews_per_day: data.reviews_per_day ?? DEFAULT_SETTINGS.reviews_per_day,
+      target_retention: data.target_retention ?? DEFAULT_SETTINGS.target_retention,
+      speech_feedback_enabled: data.speech_feedback_enabled ?? DEFAULT_SETTINGS.speech_feedback_enabled,
+      auto_assess_enabled: data.auto_assess_enabled ?? DEFAULT_SETTINGS.auto_assess_enabled,
+      recognition_shadow_default: data.recognition_shadow_default ?? DEFAULT_SETTINGS.recognition_shadow_default,
+      show_time_to_recall: data.show_time_to_recall ?? DEFAULT_SETTINGS.show_time_to_recall,
+    };
+  } catch (err) {
+    console.warn('[phrasesApi] fetchMemberPhraseSettings failed:', err);
+    return {
+      member_id: memberId,
+      ...DEFAULT_SETTINGS,
+    };
+  }
 }
 
-// Stub: Tables not created yet - no-op
-export async function upsertMemberPhraseSettings(_settings: PhraseSettings) {
-  console.warn('[phrasesApi] member_phrase_settings table not yet created - settings stored locally only');
-  return { data: null, error: null };
+// Upsert member phrase settings to Supabase
+export async function upsertMemberPhraseSettings(settings: PhraseSettings) {
+  try {
+    const { data, error } = await db
+      .from('member_phrase_settings')
+      .upsert({
+        member_id: settings.member_id,
+        new_per_day: settings.new_per_day,
+        reviews_per_day: settings.reviews_per_day,
+        target_retention: settings.target_retention,
+        speech_feedback_enabled: settings.speech_feedback_enabled,
+        auto_assess_enabled: settings.auto_assess_enabled,
+        recognition_shadow_default: settings.recognition_shadow_default,
+        show_time_to_recall: settings.show_time_to_recall,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'member_id' });
+
+    if (error) {
+      console.warn('[phrasesApi] Error upserting settings:', error.message);
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.warn('[phrasesApi] upsertMemberPhraseSettings failed:', err);
+    return { data: null, error: err };
+  }
+}
+
+// Insert phrases to Supabase (for TSV import)
+export async function insertPhrases(phrases: Phrase[]) {
+  if (phrases.length === 0) {
+    return { data: null, error: null };
+  }
+
+  try {
+    const dbPhrases = phrases.map((p) => ({
+      id: p.id,
+      mode: p.mode,
+      prompt_en: p.prompt_en ?? null,
+      audio_url: p.audio_url ?? null,
+      transcript_fr: p.transcript_fr ?? null,
+      translation_en: p.translation_en ?? null,
+      answers_fr: p.answers_fr ?? null,
+      canonical_fr: p.canonical_fr ?? null,
+      tags: p.tags ?? [],
+      difficulty: p.difficulty ?? 3,
+      scaffold_overrides: p.scaffold_overrides ?? null,
+      created_at: p.created_at,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { data, error } = await db
+      .from('phrases')
+      .upsert(dbPhrases, { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[phrasesApi] Error inserting phrases:', error.message);
+    }
+
+    return { data, error };
+  } catch (err) {
+    console.warn('[phrasesApi] insertPhrases failed:', err);
+    return { data: null, error: err };
+  }
 }

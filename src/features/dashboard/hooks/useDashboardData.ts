@@ -1,10 +1,12 @@
 /**
  * Dashboard Data Hook
  * Combines real assessment data with mock data
+ * V0-CORE: Habits and Goals now persist to database
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import {
   fetchUserAssessments,
   getBaselineAndCurrent,
@@ -31,6 +33,80 @@ import type {
   Badge,
 } from '../types';
 
+// Database row types
+interface HabitRow {
+  id: string;
+  user_id: string;
+  name: string;
+  frequency: 'daily' | 'weekly';
+  source: 'system' | 'personal';
+  intensity: number | null;
+  created_at: string;
+}
+
+interface HabitCellRow {
+  id: string;
+  habit_id: string;
+  user_id: string;
+  date: string;
+  status: 'done' | 'missed' | 'na' | 'future';
+  intensity: number | null;
+}
+
+interface GoalRow {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  acceptance_criteria: string | null;
+  deadline: string | null;
+  goal_type: 'skill' | 'volume' | 'freeform';
+  locked: boolean;
+  dimension: string | null;
+  target_score: number | null;
+  metric: string | null;
+  target_value: number | null;
+  created_at: string;
+}
+
+// Convert database row to frontend type
+function habitRowToHabit(row: HabitRow): Habit {
+  return {
+    id: row.id,
+    name: row.name,
+    frequency: row.frequency,
+    source: row.source,
+    intensity: row.intensity ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function habitCellRowToHabitCell(row: HabitCellRow): HabitCell {
+  return {
+    habitId: row.habit_id,
+    date: row.date,
+    status: row.status,
+    intensity: row.intensity ?? undefined,
+  };
+}
+
+function goalRowToGoal(row: GoalRow): Goal {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    acceptanceCriteria: row.acceptance_criteria || '',
+    deadline: row.deadline || '',
+    type: row.goal_type,
+    locked: row.locked,
+    createdAt: row.created_at,
+    dimension: row.dimension as Goal['dimension'],
+    targetScore: row.target_score ?? undefined,
+    metric: row.metric as Goal['metric'],
+    targetValue: row.target_value ?? undefined,
+  };
+}
+
 export function useDashboardData(viewingUserId?: string) {
   const { user } = useAuth();
   const targetUserId = viewingUserId || user?.id;
@@ -55,13 +131,14 @@ export function useDashboardData(viewingUserId?: string) {
   useEffect(() => {
     if (!targetUserId) return;
     loadDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetUserId]);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     if (!targetUserId || !user) return;
 
     try {
-      setLoading({ ...loading, assessments: true });
+      setLoading(prev => ({ ...prev, assessments: true, habits: true, goals: true }));
 
       // Fetch real assessment data
       let assessments = await fetchUserAssessments(targetUserId);
@@ -74,10 +151,67 @@ export function useDashboardData(viewingUserId?: string) {
       
       const { baseline, current } = getBaselineAndCurrent(assessments);
 
-      // Initialize mock data
-      const mockHabits = generateMockHabits();
-      const mockHabitGrid = generateMockHabitGrid(mockHabits);
-      const mockGoals = generateMockGoals();
+      // ========================================
+      // V0-CORE: Fetch habits from database
+      // ========================================
+      let loadedHabits: Habit[] = [];
+      let loadedHabitGrid: HabitCell[] = [];
+      
+      const { data: habitsData, error: habitsError } = await supabase
+        .from('habits')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .order('created_at', { ascending: true });
+      
+      if (habitsError) {
+        console.error('Error fetching habits:', habitsError);
+        // Fall back to mock data if table doesn't exist yet
+        loadedHabits = generateMockHabits();
+        loadedHabitGrid = generateMockHabitGrid(loadedHabits);
+      } else if (habitsData && habitsData.length > 0) {
+        loadedHabits = habitsData.map((row: HabitRow) => habitRowToHabit(row));
+        
+        // Fetch habit cells for these habits
+        const habitIds = loadedHabits.map(h => h.id);
+        const { data: cellsData, error: cellsError } = await supabase
+          .from('habit_cells')
+          .select('*')
+          .in('habit_id', habitIds);
+        
+        if (cellsError) {
+          console.error('Error fetching habit cells:', cellsError);
+          loadedHabitGrid = generateMockHabitGrid(loadedHabits);
+        } else {
+          loadedHabitGrid = (cellsData || []).map((row: HabitCellRow) => habitCellRowToHabitCell(row));
+        }
+      } else {
+        // No habits in DB, use mock data for demo
+        loadedHabits = generateMockHabits();
+        loadedHabitGrid = generateMockHabitGrid(loadedHabits);
+      }
+
+      // ========================================
+      // V0-CORE: Fetch goals from database
+      // ========================================
+      let loadedGoals: Goal[] = [];
+      
+      const { data: goalsData, error: goalsError } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .order('created_at', { ascending: true });
+      
+      if (goalsError) {
+        console.error('Error fetching goals:', goalsError);
+        // Fall back to mock data if table doesn't exist yet
+        loadedGoals = generateMockGoals();
+      } else if (goalsData && goalsData.length > 0) {
+        loadedGoals = goalsData.map((row: GoalRow) => goalRowToGoal(row));
+      } else {
+        // No goals in DB, use mock data for demo
+        loadedGoals = generateMockGoals();
+      }
+
       const mockPhrases = generateMockPhraseStats();
       const mockAIMetrics = generateMockAIMetrics();
       const mockBadges = generateMockBadges();
@@ -87,9 +221,9 @@ export function useDashboardData(viewingUserId?: string) {
         mockBadges.find((b) => b.id === 'badge-first-assessment')!.unlocked = true;
       }
 
-      setHabits(mockHabits);
-      setHabitGrid(mockHabitGrid);
-      setGoals(mockGoals);
+      setHabits(loadedHabits);
+      setHabitGrid(loadedHabitGrid);
+      setGoals(loadedGoals);
       setBadges(mockBadges);
 
       // Generate timeline series for overall metric
@@ -115,9 +249,9 @@ export function useDashboardData(viewingUserId?: string) {
             ...timelineSeries,
           },
         ],
-        habits: mockHabits,
-        habitGrid: mockHabitGrid,
-        goals: mockGoals,
+        habits: loadedHabits,
+        habitGrid: loadedHabitGrid,
+        goals: loadedGoals,
         phrases: mockPhrases,
         aiMetrics: mockAIMetrics,
         badges: mockBadges,
@@ -145,10 +279,17 @@ export function useDashboardData(viewingUserId?: string) {
         badges: false,
       });
     }
-  };
+  }, [targetUserId, user]);
 
-  // Methods to update local state
-  const updateHabitCell = (habitId: string, date: string, status: HabitCell['status'], intensity?: number) => {
+  // ========================================
+  // V0-CORE: Database-persisted action methods
+  // ========================================
+
+  // Update a habit cell (daily completion tracking)
+  const updateHabitCell = async (habitId: string, date: string, status: HabitCell['status'], intensity?: number) => {
+    if (!targetUserId) return;
+
+    // Optimistic update
     setHabitGrid((prev) =>
       prev.map((cell) =>
         cell.habitId === habitId && cell.date === date
@@ -156,43 +297,161 @@ export function useDashboardData(viewingUserId?: string) {
           : cell
       )
     );
-  };
 
-  const addHabit = (habit: Habit) => {
-    setHabits((prev) => [...prev, habit]);
-    
-    // Generate grid cells for this habit starting from Nov 1st
-    const today = new Date();
-    const startDate = new Date('2025-11-01');
-    const diffTime = Math.abs(today.getTime() - startDate.getTime());
-    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    const newCells: HabitCell[] = [];
-    
-    for (let i = totalDays; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      const isFuture = date > today;
-      
-      newCells.push({
-        habitId: habit.id,
-        date: dateStr,
-        status: isFuture ? 'future' : 'na',
+    // Persist to database using upsert
+    const { error } = await supabase
+      .from('habit_cells')
+      .upsert({
+        habit_id: habitId,
+        user_id: targetUserId,
+        date,
+        status,
+        intensity: intensity ?? null,
+      }, {
+        onConflict: 'habit_id,date'
       });
+
+    if (error) {
+      console.error('Error updating habit cell:', error);
+      // Could revert optimistic update here if needed
     }
-    
-    setHabitGrid((prev) => [...prev, ...newCells]);
   };
 
-  const addGoal = (goal: Goal) => {
-    setGoals((prev) => [...prev, goal]);
+  // Add a new habit
+  const addHabit = async (habit: Omit<Habit, 'id' | 'createdAt'> & { id?: string; createdAt?: string }) => {
+    if (!targetUserId) return;
+
+    // Insert into database
+    const { data: newHabit, error } = await supabase
+      .from('habits')
+      .insert({
+        user_id: targetUserId,
+        name: habit.name,
+        frequency: habit.frequency,
+        source: habit.source,
+        intensity: habit.intensity ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding habit:', error);
+      return;
+    }
+
+    if (newHabit) {
+      // Add to local state
+      const convertedHabit = habitRowToHabit(newHabit as HabitRow);
+      setHabits((prev) => [...prev, convertedHabit]);
+    }
   };
 
-  const updateGoal = (goalId: string, updates: Partial<Goal>) => {
+  // Delete a habit
+  const deleteHabit = async (habitId: string) => {
+    if (!targetUserId) return;
+
+    // Delete from database (will cascade to habit_cells)
+    const { error } = await supabase
+      .from('habits')
+      .delete()
+      .eq('id', habitId)
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      console.error('Error deleting habit:', error);
+      return;
+    }
+
+    // Remove from local state
+    setHabits((prev) => prev.filter(h => h.id !== habitId));
+    setHabitGrid((prev) => prev.filter(c => c.habitId !== habitId));
+  };
+
+  // Add a new goal
+  const addGoal = async (goal: Omit<Goal, 'id' | 'createdAt'> & { id?: string; createdAt?: string }) => {
+    if (!targetUserId) return;
+
+    // Insert into database
+    const { data: newGoal, error } = await supabase
+      .from('goals')
+      .insert({
+        user_id: targetUserId,
+        name: goal.name,
+        description: goal.description || null,
+        acceptance_criteria: goal.acceptanceCriteria || null,
+        deadline: goal.deadline || null,
+        goal_type: goal.type,
+        locked: goal.locked,
+        dimension: goal.dimension || null,
+        target_score: goal.targetScore ?? null,
+        metric: goal.metric || null,
+        target_value: goal.targetValue ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding goal:', error);
+      return;
+    }
+
+    if (newGoal) {
+      // Add to local state
+      const convertedGoal = goalRowToGoal(newGoal as GoalRow);
+      setGoals((prev) => [...prev, convertedGoal]);
+    }
+  };
+
+  // Update a goal
+  const updateGoal = async (goalId: string, updates: Partial<Goal>) => {
+    if (!targetUserId) return;
+
+    // Optimistic update
     setGoals((prev) =>
       prev.map((g) => (g.id === goalId ? { ...g, ...updates } : g))
     );
+
+    // Persist to database
+    const { error } = await supabase
+      .from('goals')
+      .update({
+        name: updates.name,
+        description: updates.description,
+        acceptance_criteria: updates.acceptanceCriteria,
+        deadline: updates.deadline,
+        goal_type: updates.type,
+        locked: updates.locked,
+        dimension: updates.dimension,
+        target_score: updates.targetScore,
+        metric: updates.metric,
+        target_value: updates.targetValue,
+      })
+      .eq('id', goalId)
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      console.error('Error updating goal:', error);
+    }
+  };
+
+  // Delete a goal
+  const deleteGoal = async (goalId: string) => {
+    if (!targetUserId) return;
+
+    // Delete from database
+    const { error } = await supabase
+      .from('goals')
+      .delete()
+      .eq('id', goalId)
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      console.error('Error deleting goal:', error);
+      return;
+    }
+
+    // Remove from local state
+    setGoals((prev) => prev.filter(g => g.id !== goalId));
   };
 
   const unlockBadge = (badgeId: string) => {
@@ -216,8 +475,10 @@ export function useDashboardData(viewingUserId?: string) {
     actions: {
       updateHabitCell,
       addHabit,
+      deleteHabit,
       addGoal,
       updateGoal,
+      deleteGoal,
       unlockBadge,
       refresh: loadDashboardData,
     },

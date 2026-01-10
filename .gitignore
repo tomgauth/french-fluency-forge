@@ -32,3 +32,8 @@ test-results.json
 # Test environment
 .env.test
 .env.local
+
+# Environment files (keep credentials safe)
+.env
+.env.owner.backup
+.env*.local

@@ -263,8 +263,9 @@ export function ConversationModule({ sessionId, onComplete }: ConversationModule
 
     // Now try the Supabase client invoke
     let errorResponseBody: any = null;
+    let data: any = null;  // V0-CORE: Moved outside try-catch to fix scope issue
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-skill', {
+      const result = await supabase.functions.invoke('analyze-skill', {
         body: {
           transcript,
           moduleType,
@@ -273,6 +274,8 @@ export function ConversationModule({ sessionId, onComplete }: ConversationModule
           recordingId: recording.id,
         },
       });
+      data = result.data;
+      const error = result.error;
 
       updateStep(`${stepId}-supabase-invoke`, error ? 'error' : 'success', {
         hasData: !!data,
@@ -303,7 +306,7 @@ export function ConversationModule({ sessionId, onComplete }: ConversationModule
           });
 
           if (!directResponse.ok) {
-            errorResponseBody = await directResponse.json().catch(() => ({ rawText: await directResponse.text().catch(() => 'Could not read response') }));
+            errorResponseBody = await directResponse.json().catch(async () => ({ rawText: await directResponse.text().catch(() => 'Could not read response') }));
           }
         } catch (fetchError) {
           console.error('Failed to fetch error response directly:', fetchError);

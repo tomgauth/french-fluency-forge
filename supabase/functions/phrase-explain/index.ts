@@ -47,11 +47,14 @@ serve(async (req) => {
   }
 
   try {
-    // Get auth token
+    // Get auth token (allow anon key via apikey header)
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    const apiKey = req.headers.get('apikey');
+    
+    // Accept either Authorization header or apikey header
+    if (!authHeader && !apiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization header' }),
+        JSON.stringify({ success: false, error: 'Missing authorization' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -127,7 +130,17 @@ serve(async (req) => {
     const translation = phrase.translation_en || '';
 
     // Build prompt based on intent
-    let systemPrompt = `You are a helpful French language coach. Explain French phrases in a short, practical, non-academic way. Avoid classroom vocabulary - use "member" not "student", "coach" not "teacher". Be concise and actionable.`;
+    const systemPrompt = `You are a helpful French language coach. Be concise and practical.
+
+IMPORTANT: Always respond with ONLY valid JSON using EXACTLY these lowercase keys:
+{
+  "meaning": { "one_liner": "...", "literal": "...", "example": "..." },
+  "grammar": { "bullets": ["..."], "common_mistakes": ["..."] },
+  "usage": { "when_to_use": ["..."], "when_not_to_use": ["..."], "register": "casual" or "neutral" or "formal" },
+  "transitions": { "before": ["..."], "after": ["..."] }
+}
+
+Use lowercase keys ONLY: meaning, grammar, usage, transitions, one_liner, literal, example, bullets, common_mistakes, when_to_use, when_not_to_use, register, before, after.`;
 
     let userPrompt = '';
     
@@ -136,16 +149,12 @@ serve(async (req) => {
       
 User asked: "Why not ${whyNotText}?"
 
-Explain why the user's alternative doesn't work and provide a rule of thumb.`;
+Explain why the user's alternative doesn't work. Return JSON:
+{"why_not": [{"user_alt": "...", "answer": "...", "rule_of_thumb": "..."}]}`;
     } else {
       userPrompt = `Phrase: "${frenchText}" (${translation || englishPrompt})
 
-Generate a structured explanation with:
-1. Meaning: one-liner, literal translation, example
-2. Grammar: key points and common mistakes
-3. Usage: when to use, when not to use, register (casual/neutral/formal)
-4. Transitions: common phrases before/after this one
-
+Generate explanation using the exact lowercase JSON schema.
 ${intent ? `Focus on: ${intent}` : ''}`;
     }
 
@@ -170,7 +179,7 @@ ${intent ? `Focus on: ${intent}` : ''}`;
       const errorText = await openaiResponse.text();
       console.error('[phrase-explain] OpenAI error:', errorText);
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to generate explanation' }),
+        JSON.stringify({ success: false, error: 'Failed to generate explanation', details: errorText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

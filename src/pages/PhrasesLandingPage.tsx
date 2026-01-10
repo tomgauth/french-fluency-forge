@@ -9,14 +9,15 @@ import { AdminPadding } from '@/components/AdminPadding';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, Play, Library, Settings, User, Package } from 'lucide-react';
+import { BookOpen, Play, Library, Settings, User, Package, Upload } from 'lucide-react';
 import { EmptyState } from '@/features/phrases/components/EmptyState';
 import { usePhrasesLibrary } from '@/features/phrases/hooks/usePhrasesLibrary';
 import { useToast } from '@/hooks/use-toast';
 import { getPhrasesByPackId } from '@/features/phrases/data/mockPhrasesData';
-import type { MemberPhraseCard } from '@/features/phrases/types';
-import { upsertMemberCards } from '@/features/phrases/services/phrasesApi';
+import type { MemberPhraseCard, Phrase } from '@/features/phrases/types';
+import { upsertMemberCards, insertPhrases } from '@/features/phrases/services/phrasesApi';
 import { runMigrationIfNeeded } from '@/features/phrases/utils/migrateLocalStorage';
+import { TSVImportDialog } from '@/features/phrases/components/TSVImportDialog';
 
 export default function PhrasesLandingPage() {
   const navigate = useNavigate();
@@ -27,53 +28,143 @@ export default function PhrasesLandingPage() {
   const memberId = user?.id || 'guest';
 
   const handleSeedStarterPack = async () => {
-    // Get first 10 phrases from "Small talk starter" pack
-    const starterPhrases = getPhrasesByPackId('pack-001').slice(0, 10);
-    
-    // Create cards for each phrase
-    const now = new Date();
-    const newCards: MemberPhraseCard[] = starterPhrases.map((phrase, index) => ({
-      id: `card-${memberId}-${phrase.id}`,
-      member_id: memberId,
-      phrase_id: phrase.id,
-      status: 'active',
-      priority: 0,
-      scheduler: {
-        algorithm: 'sm2',
-        state: 'new',
-        due_at: now.toISOString(),
-        interval_days: 0,
-        ease_factor: 2.5,
-        repetitions: 0,
-      },
-      lapses: 0,
-      reviews: 0,
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    }));
-
-    if (user?.id) {
-      await runMigrationIfNeeded(user.id);
-      await upsertMemberCards(newCards);
-      localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(newCards));
-    } else {
-      // Load existing cards
-      const key = `solv_phrases_cards_${memberId}`;
-      const stored = localStorage.getItem(key);
-      const existingCards = stored ? JSON.parse(stored) : [];
+    console.log('[PhrasesLandingPage] handleSeedStarterPack called');
+    try {
+      // Get first 10 phrases from "Small talk starter" pack
+      console.log('[PhrasesLandingPage] Getting starter phrases...');
+      const starterPhrases = getPhrasesByPackId('pack-001').slice(0, 10);
+      console.log('[PhrasesLandingPage] Got', starterPhrases.length, 'phrases');
       
-      // Merge and save
-      const allCards = [...existingCards, ...newCards];
-      localStorage.setItem(key, JSON.stringify(allCards));
+      // Create cards for each phrase
+      const now = new Date();
+      const newCards: MemberPhraseCard[] = starterPhrases.map((phrase) => ({
+        id: crypto.randomUUID(), // Use proper UUID for database
+        member_id: memberId,
+        phrase_id: phrase.id,
+        status: 'active',
+        priority: 0,
+        scheduler: {
+          algorithm: 'sm2',
+          state: 'new',
+          due_at: now.toISOString(),
+          interval_days: 0,
+          ease_factor: 2.5,
+          repetitions: 0,
+        },
+        lapses: 0,
+        reviews: 0,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      }));
+      
+      console.log('[PhrasesLandingPage] Created', newCards.length, 'cards');
+
+      if (user?.id) {
+        console.log('[PhrasesLandingPage] User logged in, attempting Supabase sync...');
+        try {
+          await runMigrationIfNeeded(user.id);
+          
+          // First, insert the mock phrases to Supabase (they need to exist for FK constraint)
+          console.log('[PhrasesLandingPage] Inserting starter phrases to Supabase...');
+          await insertPhrases(starterPhrases);
+          
+          console.log('[PhrasesLandingPage] Upserting cards...');
+          const { error: upsertError } = await upsertMemberCards(newCards);
+          if (upsertError) {
+            console.warn('[PhrasesLandingPage] Supabase upsert failed (will use localStorage):', upsertError);
+          } else {
+            console.log('[PhrasesLandingPage] Cards upserted to Supabase');
+          }
+        } catch (err) {
+          console.warn('[PhrasesLandingPage] Supabase sync failed (will use localStorage):', err);
+        }
+        console.log('[PhrasesLandingPage] Saving to localStorage...');
+        // Also save phrases to localStorage for offline access
+        const phrasesKey = `solv_phrases_${user.id}`;
+        const storedPhrases = localStorage.getItem(phrasesKey);
+        const existingPhrases = storedPhrases ? JSON.parse(storedPhrases) : [];
+        localStorage.setItem(phrasesKey, JSON.stringify([...existingPhrases, ...starterPhrases]));
+        
+        localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(newCards));
+      } else {
+        console.log('[PhrasesLandingPage] Guest mode, saving to localStorage only...');
+        // Load existing cards
+        const key = `solv_phrases_cards_${memberId}`;
+        const stored = localStorage.getItem(key);
+        const existingCards = stored ? JSON.parse(stored) : [];
+        
+        // Merge and save
+        const allCards = [...existingCards, ...newCards];
+        localStorage.setItem(key, JSON.stringify(allCards));
+      }
+      
+      console.log('[PhrasesLandingPage] Done, showing toast and reloading...');
+
+      toast({
+        title: 'Starter pack added!',
+        description: `${newCards.length} phrases are ready to practice.`,
+      });
+
+      // Refresh the page
+      window.location.reload();
+    } catch (error) {
+      console.error('Error adding starter pack:', error);
+      toast({
+        title: 'Error adding starter pack',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
+      });
     }
+  };
 
-    toast({
-      title: 'Starter pack added!',
-      description: `${newCards.length} phrases are ready to practice.`,
-    });
+  // Handle TSV Import
+  const handleTSVImport = async (phrases: Phrase[], cards: MemberPhraseCard[]) => {
+    try {
+      // Store phrases in localStorage and Supabase
+      const phrasesKey = `solv_phrases_${memberId}`;
+      const storedPhrases = localStorage.getItem(phrasesKey);
+      const existingPhrases = storedPhrases ? JSON.parse(storedPhrases) : [];
+      localStorage.setItem(phrasesKey, JSON.stringify([...existingPhrases, ...phrases]));
+      
+      // Try to insert phrases to Supabase (if migration has been run)
+      if (user?.id) {
+        await insertPhrases(phrases);
+      }
+      
+      // Store cards
+      if (user?.id) {
+        await runMigrationIfNeeded(user.id);
+        await upsertMemberCards(cards);
+        
+        const cardsKey = `solv_phrases_cards_${user.id}`;
+        const storedCards = localStorage.getItem(cardsKey);
+        const existingCards = storedCards ? JSON.parse(storedCards) : [];
+        localStorage.setItem(cardsKey, JSON.stringify([...existingCards, ...cards]));
+      } else {
+        const cardsKey = `solv_phrases_cards_${memberId}`;
+        const storedCards = localStorage.getItem(cardsKey);
+        const existingCards = storedCards ? JSON.parse(storedCards) : [];
+        localStorage.setItem(cardsKey, JSON.stringify([...existingCards, ...cards]));
+      }
 
-    // Refresh the page
-    window.location.reload();
+      toast({
+        title: 'Phrases imported!',
+        description: `${phrases.length} phrases are ready to practice.`,
+        duration: 5000,
+      });
+
+      // Delay refresh to show success dialog and toast
+      setTimeout(() => {
+        window.location.reload();
+      }, 2500);
+    } catch (error) {
+      console.error('Error importing phrases:', error);
+      toast({
+        title: 'Error importing phrases',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {
@@ -117,15 +208,26 @@ export default function PhrasesLandingPage() {
             // Empty state
             <Card>
               <CardContent className="pt-6">
-                <EmptyState
-                  icon={BookOpen}
-                  title="No phrases assigned yet"
-                  description="Add a starter pack to begin your spaced repetition practice. You'll learn syntactic chunks that help you speak naturally."
-                  action={{
-                    label: 'Add starter pack',
-                    onClick: handleSeedStarterPack,
-                  }}
-                />
+                <div className="flex flex-col items-center justify-center text-center py-10 space-y-6">
+                  <div className="rounded-full bg-primary/10 p-4">
+                    <BookOpen className="h-10 w-10 text-primary" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-lg">No phrases assigned yet</h3>
+                    <p className="text-muted-foreground max-w-md">
+                      Add a starter pack to begin your spaced repetition practice, or import your own phrases via TSV.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button type="button" onClick={handleSeedStarterPack}>
+                      Add starter pack
+                    </Button>
+                    <TSVImportDialog
+                      memberId={memberId}
+                      onImport={handleTSVImport}
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -275,11 +377,19 @@ export default function PhrasesLandingPage() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Want to expand your practice? Add another starter pack.
+                      Want to expand your practice? Add a starter pack or import your own.
                     </p>
-                    <Button variant="outline" onClick={handleSeedStarterPack}>
-                      Add 10 more phrases
-                    </Button>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button variant="outline" onClick={handleSeedStarterPack}>
+                        Add 10 more phrases
+                      </Button>
+                      <TSVImportDialog onImport={handleTSVImport} memberId={memberId}>
+                        <Button variant="outline">
+                          <Upload className="w-4 h-4 mr-2" />
+                          Import TSV
+                        </Button>
+                      </TSVImportDialog>
+                    </div>
                   </CardContent>
                 </Card>
 

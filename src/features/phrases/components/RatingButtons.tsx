@@ -1,8 +1,10 @@
 /**
  * Rating Buttons Component
  * Four rating buttons with interval previews
+ * Keyboard shortcuts: 1=Again, 2=Hard, 3=Good, 4=Easy
  */
 
+import { useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Rating } from '../types';
@@ -16,7 +18,32 @@ interface RatingButtonsProps {
   disabled?: boolean;
 }
 
+// Keyboard mapping: 1=Again, 2=Hard, 3=Good, 4=Easy
+const keyToRating: Record<string, Rating> = {
+  '1': 'again',
+  '2': 'hard',
+  '3': 'good',
+  '4': 'easy',
+};
+
 export function RatingButtons({ onRate, intervals, exactDueDates, previewIntervals, suggestedRating, disabled }: RatingButtonsProps) {
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (disabled) return;
+    
+    const rating = keyToRating[e.key];
+    if (rating) {
+      e.preventDefault();
+      onRate(rating);
+    }
+  }, [onRate, disabled]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Use preview intervals if available, fallback to intervals
   // Use preview intervals if available, fallback to intervals
   const displayIntervals = previewIntervals
     ? Object.fromEntries(
@@ -42,28 +69,33 @@ export function RatingButtons({ onRate, intervals, exactDueDates, previewInterva
   const buttons: Array<{
     rating: Rating;
     label: string;
+    shortcut: string;
     variant: 'destructive' | 'outline' | 'default' | 'secondary';
     className?: string;
   }> = [
     {
       rating: 'again',
       label: 'Again',
+      shortcut: '1',
       variant: 'destructive',
     },
     {
       rating: 'hard',
       label: 'Hard',
+      shortcut: '2',
       variant: 'outline',
       className: 'border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:border-yellow-600 dark:text-yellow-500 dark:hover:bg-yellow-950',
     },
     {
       rating: 'good',
       label: 'Good',
+      shortcut: '3',
       variant: 'default',
     },
     {
       rating: 'easy',
       label: 'Easy',
+      shortcut: '4',
       variant: 'secondary',
       className: 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700',
     },
@@ -85,7 +117,10 @@ export function RatingButtons({ onRate, intervals, exactDueDates, previewInterva
             } ${button.className || ''}`}
           >
             <div className="flex flex-col items-center">
-              <span>{button.label}</span>
+              <span className="flex items-center gap-1">
+                <kbd className="text-xs opacity-60 bg-background/20 px-1 rounded">{button.shortcut}</kbd>
+                {button.label}
+              </span>
               {isSuggested && (
                 <span className="text-xs font-semibold text-primary mt-0.5">
                   Suggested

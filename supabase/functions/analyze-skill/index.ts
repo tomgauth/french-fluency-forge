@@ -341,6 +341,29 @@ serve(async (req) => {
       );
     }
 
+    // Early validation: check for OpenAI API key before doing any work
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY is not configured - failing early');
+      // Update recording status to error immediately
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (supabaseUrl && supabaseKey) {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase
+          .from('skill_recordings')
+          .update({ 
+            status: 'error', 
+            error_message: 'OpenAI API key not configured on server',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', recordingId);
+      }
+      return new Response(
+        JSON.stringify({ error: 'OpenAI API key not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log(`Processing ${moduleType} recording ${recordingId}${directTranscript ? ' (dev mode - text input)' : ''}`);
     if (audioMimeType) {
       console.log(`Audio MIME type: ${audioMimeType}`);
@@ -471,6 +494,30 @@ serve(async (req) => {
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // Update recording status to 'error' in database
+    // Extract recordingId from request if possible (need to parse it again from the original request)
+    try {
+      const reqBody = await req.clone().json().catch(() => ({}));
+      if (reqBody.recordingId) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        if (supabaseUrl && supabaseKey) {
+          const supabase = createClient(supabaseUrl, supabaseKey);
+          await supabase
+            .from('skill_recordings')
+            .update({ 
+              status: 'error', 
+              error_message: errorMessage,
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', reqBody.recordingId);
+          console.log(`Updated recording ${reqBody.recordingId} status to 'error'`);
+        }
+      }
+    } catch (updateError) {
+      console.error('Failed to update recording status to error:', updateError);
+    }
     
     // Return more detailed error information
     return new Response(

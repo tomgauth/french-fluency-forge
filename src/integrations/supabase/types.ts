@@ -1011,6 +1011,132 @@ export type Database = {
         }
         Relationships: []
       }
+      // V0-CORE: Habits and Goals persistence tables
+      habits: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          frequency: "daily" | "weekly"
+          source: "system" | "personal"
+          intensity: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          frequency: "daily" | "weekly"
+          source?: "system" | "personal"
+          intensity?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          frequency?: "daily" | "weekly"
+          source?: "system" | "personal"
+          intensity?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      habit_cells: {
+        Row: {
+          id: string
+          habit_id: string
+          user_id: string
+          date: string
+          status: "done" | "missed" | "na" | "future"
+          intensity: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          habit_id: string
+          user_id: string
+          date: string
+          status?: "done" | "missed" | "na" | "future"
+          intensity?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          habit_id?: string
+          user_id?: string
+          date?: string
+          status?: "done" | "missed" | "na" | "future"
+          intensity?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_cells_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          acceptance_criteria: string | null
+          deadline: string | null
+          goal_type: "skill" | "volume" | "freeform"
+          locked: boolean
+          dimension: string | null
+          target_score: number | null
+          metric: string | null
+          target_value: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          acceptance_criteria?: string | null
+          deadline?: string | null
+          goal_type: "skill" | "volume" | "freeform"
+          locked?: boolean
+          dimension?: string | null
+          target_score?: number | null
+          metric?: string | null
+          target_value?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          acceptance_criteria?: string | null
+          deadline?: string | null
+          goal_type?: "skill" | "volume" | "freeform"
+          locked?: boolean
+          dimension?: string | null
+          target_score?: number | null
+          metric?: string | null
+          target_value?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       systemeio_webhook_events: {
         Row: {
           error: string | null

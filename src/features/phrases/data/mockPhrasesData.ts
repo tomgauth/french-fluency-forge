@@ -1,15 +1,25 @@
 /**
  * Mock Phrases Data - 40 phrases across 3 packs
  * Anti-school vocabulary enforced
+ * 
+ * Note: Phrase IDs are proper UUIDs for Supabase compatibility.
  */
 
 import type { Phrase, PhrasePack } from '../types';
+
+// Helper to generate deterministic UUID for a phrase number
+// UUID format: 00000000-0000-4000-8001-000000000001 (must be exactly 36 chars)
+// Last segment must be 12 hex characters
+function getPhraseUUID(num: number): string {
+  const paddedNum = String(num).padStart(12, '0'); // 12 chars for last segment
+  return `00000000-0000-4000-8001-${paddedNum}`;
+}
 
 // 40 Phrases: 25 recall, 15 recognition
 export const MOCK_PHRASES: Phrase[] = [
   // Pack 1: Small talk starter (15 phrases)
   {
-    id: 'phrase-001',
+    id: getPhraseUUID(1),
     mode: 'recall',
     prompt_en: 'How are you?',
     canonical_fr: 'Comment ça va ?',
@@ -19,7 +29,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-002',
+    id: getPhraseUUID(2),
     mode: 'recall',
     prompt_en: "I'm doing well, thanks",
     canonical_fr: 'Je vais bien, merci',
@@ -29,7 +39,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-003',
+    id: getPhraseUUID(3),
     mode: 'recall',
     prompt_en: "What's your name?",
     canonical_fr: 'Comment tu t\'appelles ?',
@@ -39,7 +49,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-004',
+    id: getPhraseUUID(4),
     mode: 'recall',
     prompt_en: 'Nice to meet you',
     canonical_fr: 'Enchanté',
@@ -49,7 +59,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-005',
+    id: getPhraseUUID(5),
     mode: 'recall',
     prompt_en: 'Where are you from?',
     canonical_fr: 'D\'où viens-tu ?',
@@ -59,7 +69,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-006',
+    id: getPhraseUUID(6),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-006.mp3',
     transcript_fr: 'Qu\'est-ce que tu fais dans la vie ?',
@@ -69,7 +79,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-007',
+    id: getPhraseUUID(7),
     mode: 'recall',
     prompt_en: 'I work in tech',
     canonical_fr: 'Je travaille dans la tech',
@@ -79,7 +89,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-008',
+    id: getPhraseUUID(8),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-008.mp3',
     transcript_fr: 'Tu habites où ?',
@@ -89,7 +99,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-009',
+    id: getPhraseUUID(9),
     mode: 'recall',
     prompt_en: 'I live in Paris',
     canonical_fr: 'J\'habite à Paris',
@@ -99,7 +109,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-010',
+    id: getPhraseUUID(10),
     mode: 'recall',
     prompt_en: 'Do you speak English?',
     canonical_fr: 'Tu parles anglais ?',
@@ -109,7 +119,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-011',
+    id: getPhraseUUID(11),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-011.mp3',
     transcript_fr: 'Je parle un peu français',
@@ -119,7 +129,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-012',
+    id: getPhraseUUID(12),
     mode: 'recall',
     prompt_en: 'What do you like to do?',
     canonical_fr: 'Qu\'est-ce que tu aimes faire ?',
@@ -129,7 +139,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-013',
+    id: getPhraseUUID(13),
     mode: 'recall',
     prompt_en: 'I like reading',
     canonical_fr: 'J\'aime lire',
@@ -139,7 +149,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-014',
+    id: getPhraseUUID(14),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-014.mp3',
     transcript_fr: 'Quel temps fait-il aujourd\'hui ?',
@@ -149,7 +159,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-015',
+    id: getPhraseUUID(15),
     mode: 'recall',
     prompt_en: 'It\'s nice weather',
     canonical_fr: 'Il fait beau',
@@ -161,7 +171,7 @@ export const MOCK_PHRASES: Phrase[] = [
 
   // Pack 2: Work + logistics (13 phrases)
   {
-    id: 'phrase-016',
+    id: getPhraseUUID(16),
     mode: 'recall',
     prompt_en: 'I have a meeting at 3pm',
     canonical_fr: 'J\'ai une réunion à 15h',
@@ -171,7 +181,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-017',
+    id: getPhraseUUID(17),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-017.mp3',
     transcript_fr: 'On peut reporter à demain ?',
@@ -181,7 +191,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-018',
+    id: getPhraseUUID(18),
     mode: 'recall',
     prompt_en: 'I need to finish this by Friday',
     canonical_fr: 'Je dois finir ça avant vendredi',
@@ -191,7 +201,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-019',
+    id: getPhraseUUID(19),
     mode: 'recall',
     prompt_en: 'Can you send me the file?',
     canonical_fr: 'Tu peux m\'envoyer le fichier ?',
@@ -201,7 +211,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-020',
+    id: getPhraseUUID(20),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-020.mp3',
     transcript_fr: 'Je te l\'envoie tout de suite',
@@ -211,7 +221,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-021',
+    id: getPhraseUUID(21),
     mode: 'recall',
     prompt_en: 'Where is the nearest metro station?',
     canonical_fr: 'Où est la station de métro la plus proche ?',
@@ -221,7 +231,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-022',
+    id: getPhraseUUID(22),
     mode: 'recall',
     prompt_en: 'How much does it cost?',
     canonical_fr: 'Ça coûte combien ?',
@@ -231,7 +241,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-023',
+    id: getPhraseUUID(23),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-023.mp3',
     transcript_fr: 'C\'est vingt euros',
@@ -241,7 +251,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-024',
+    id: getPhraseUUID(24),
     mode: 'recall',
     prompt_en: 'I would like to reserve a table',
     canonical_fr: 'Je voudrais réserver une table',
@@ -251,7 +261,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-025',
+    id: getPhraseUUID(25),
     mode: 'recall',
     prompt_en: 'For how many people?',
     canonical_fr: 'Pour combien de personnes ?',
@@ -261,7 +271,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-026',
+    id: getPhraseUUID(26),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-026.mp3',
     transcript_fr: 'Vous acceptez les cartes de crédit ?',
@@ -271,7 +281,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-027',
+    id: getPhraseUUID(27),
     mode: 'recall',
     prompt_en: 'Where is the bathroom?',
     canonical_fr: 'Où sont les toilettes ?',
@@ -281,7 +291,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-028',
+    id: getPhraseUUID(28),
     mode: 'recall',
     prompt_en: 'Can I have the bill please?',
     canonical_fr: 'L\'addition, s\'il vous plaît',
@@ -293,7 +303,7 @@ export const MOCK_PHRASES: Phrase[] = [
 
   // Pack 3: Emotional reactions (12 phrases)
   {
-    id: 'phrase-029',
+    id: getPhraseUUID(29),
     mode: 'recall',
     prompt_en: 'I\'m so happy!',
     canonical_fr: 'Je suis tellement content !',
@@ -303,7 +313,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-030',
+    id: getPhraseUUID(30),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-030.mp3',
     transcript_fr: 'C\'est génial !',
@@ -313,7 +323,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-031',
+    id: getPhraseUUID(31),
     mode: 'recall',
     prompt_en: 'I\'m frustrated',
     canonical_fr: 'Je suis frustré',
@@ -323,7 +333,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-032',
+    id: getPhraseUUID(32),
     mode: 'recall',
     prompt_en: 'That makes me sad',
     canonical_fr: 'Ça me rend triste',
@@ -333,7 +343,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-033',
+    id: getPhraseUUID(33),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-033.mp3',
     transcript_fr: 'Je suis désolé',
@@ -343,7 +353,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-034',
+    id: getPhraseUUID(34),
     mode: 'recall',
     prompt_en: 'Don\'t worry',
     canonical_fr: 'T\'inquiète pas',
@@ -353,7 +363,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-035',
+    id: getPhraseUUID(35),
     mode: 'recall',
     prompt_en: 'I\'m really excited',
     canonical_fr: 'Je suis super excité',
@@ -363,7 +373,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-036',
+    id: getPhraseUUID(36),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-036.mp3',
     transcript_fr: 'Ça m\'énerve !',
@@ -373,7 +383,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-037',
+    id: getPhraseUUID(37),
     mode: 'recall',
     prompt_en: 'I\'m confused',
     canonical_fr: 'Je suis confus',
@@ -383,7 +393,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-038',
+    id: getPhraseUUID(38),
     mode: 'recall',
     prompt_en: 'That\'s incredible!',
     canonical_fr: 'C\'est incroyable !',
@@ -393,7 +403,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-039',
+    id: getPhraseUUID(39),
     mode: 'recognition',
     audio_url: '/mock/audio/phrase-039.mp3',
     transcript_fr: 'Je m\'en fiche',
@@ -403,7 +413,7 @@ export const MOCK_PHRASES: Phrase[] = [
     created_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: 'phrase-040',
+    id: getPhraseUUID(40),
     mode: 'recall',
     prompt_en: 'I feel better now',
     canonical_fr: 'Je me sens mieux maintenant',
@@ -422,9 +432,9 @@ export const MOCK_PHRASE_PACKS: PhrasePack[] = [
     description: 'Essential phrases for everyday conversations and introductions',
     tags: ['small talk', 'greetings', 'introductions'],
     phrase_ids: [
-      'phrase-001', 'phrase-002', 'phrase-003', 'phrase-004', 'phrase-005',
-      'phrase-006', 'phrase-007', 'phrase-008', 'phrase-009', 'phrase-010',
-      'phrase-011', 'phrase-012', 'phrase-013', 'phrase-014', 'phrase-015',
+      getPhraseUUID(1), getPhraseUUID(2), getPhraseUUID(3), getPhraseUUID(4), getPhraseUUID(5),
+      getPhraseUUID(6), getPhraseUUID(7), getPhraseUUID(8), getPhraseUUID(9), getPhraseUUID(10),
+      getPhraseUUID(11), getPhraseUUID(12), getPhraseUUID(13), getPhraseUUID(14), getPhraseUUID(15),
     ],
     created_at: '2026-01-01T00:00:00Z',
   },
@@ -434,9 +444,9 @@ export const MOCK_PHRASE_PACKS: PhrasePack[] = [
     description: 'Navigate work situations and daily logistics with confidence',
     tags: ['work', 'logistics', 'practical'],
     phrase_ids: [
-      'phrase-016', 'phrase-017', 'phrase-018', 'phrase-019', 'phrase-020',
-      'phrase-021', 'phrase-022', 'phrase-023', 'phrase-024', 'phrase-025',
-      'phrase-026', 'phrase-027', 'phrase-028',
+      getPhraseUUID(16), getPhraseUUID(17), getPhraseUUID(18), getPhraseUUID(19), getPhraseUUID(20),
+      getPhraseUUID(21), getPhraseUUID(22), getPhraseUUID(23), getPhraseUUID(24), getPhraseUUID(25),
+      getPhraseUUID(26), getPhraseUUID(27), getPhraseUUID(28),
     ],
     created_at: '2026-01-01T00:00:00Z',
   },
@@ -446,9 +456,9 @@ export const MOCK_PHRASE_PACKS: PhrasePack[] = [
     description: 'Express your feelings and reactions naturally in French',
     tags: ['emotions', 'relationships', 'feelings'],
     phrase_ids: [
-      'phrase-029', 'phrase-030', 'phrase-031', 'phrase-032', 'phrase-033',
-      'phrase-034', 'phrase-035', 'phrase-036', 'phrase-037', 'phrase-038',
-      'phrase-039', 'phrase-040',
+      getPhraseUUID(29), getPhraseUUID(30), getPhraseUUID(31), getPhraseUUID(32), getPhraseUUID(33),
+      getPhraseUUID(34), getPhraseUUID(35), getPhraseUUID(36), getPhraseUUID(37), getPhraseUUID(38),
+      getPhraseUUID(39), getPhraseUUID(40),
     ],
     created_at: '2026-01-01T00:00:00Z',
   },

@@ -5,8 +5,11 @@
 
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Volume2, Loader2 } from 'lucide-react';
 import type { Phrase } from '../types';
 import { ExplanationChips } from './ExplanationChips';
+import { usePhraseAudio } from '../hooks/usePhraseAudio';
 
 interface RevealPanelProps {
   phrase: Phrase;
@@ -16,6 +19,12 @@ interface RevealPanelProps {
 
 export function RevealPanel({ phrase, timeToReveal, showTimeToReveal }: RevealPanelProps) {
   const isRecall = phrase.mode === 'recall';
+  const frenchText = phrase.canonical_fr || phrase.transcript_fr || '';
+  const { isPlaying, isLoading, play } = usePhraseAudio({
+    phraseId: phrase.id,
+    text: frenchText,
+    audioUrl: phrase.audio_url,
+  });
 
   const formatTime = (ms: number): string => {
     const seconds = (ms / 1000).toFixed(1);
@@ -34,8 +43,25 @@ export function RevealPanel({ phrase, timeToReveal, showTimeToReveal }: RevealPa
         <div className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
           {isRecall ? 'Answer' : 'French'}
         </div>
-        <div className="text-3xl font-serif mb-3">
-          {phrase.canonical_fr || phrase.transcript_fr}
+        <div className="flex items-center gap-3">
+          <div className="text-3xl font-serif">
+            {phrase.canonical_fr || phrase.transcript_fr}
+          </div>
+          {/* Audio playback button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={play}
+            disabled={isLoading || isPlaying}
+            title="Listen to pronunciation"
+          >
+            {isLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Volume2 className={`h-5 w-5 ${isPlaying ? 'text-primary animate-pulse' : ''}`} />
+            )}
+          </Button>
         </div>
         
         {/* Acceptable variants (recall only) */}

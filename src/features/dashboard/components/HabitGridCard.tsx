@@ -89,7 +89,7 @@ export function HabitGridCard({
     switch (currentStatus) {
       case 'na':
         newStatus = 'done';
-        intensity = Math.floor(Math.random() * 6) + 1; // Random intensity for demo
+        intensity = 1; // Fixed intensity - solid green
         break;
       case 'done':
         newStatus = 'missed';
@@ -169,11 +169,10 @@ export function HabitGridCard({
     toast.success('Practice added to your momentum tracker!');
   };
 
-  const getCellColor = (status: HabitCellStatus, intensity?: number) => {
+  const getCellColor = (status: HabitCellStatus, _intensity?: number) => {
     switch (status) {
       case 'done':
-        const opacity = intensity ? intensity / 6 : 0.8;
-        return `rgba(34, 197, 94, ${opacity})`; // green
+        return 'rgb(34, 197, 94)'; // solid green
       case 'missed':
         return 'rgb(239, 68, 68)'; // red
       case 'na':
@@ -220,7 +219,7 @@ export function HabitGridCard({
               <div className="inline-block min-w-full px-1">
                 {/* Day Headers */}
                 <div className="flex mb-3">
-                  <div className="w-48 flex-shrink-0" />
+                  <div className="w-52 flex-shrink-0 pr-4" />
                   {dates.map((date) => {
                     const d = new Date(date);
                     const isToday = date === today.toISOString().split('T')[0];

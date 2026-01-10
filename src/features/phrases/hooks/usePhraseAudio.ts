@@ -69,8 +69,8 @@ export function usePhraseAudio({
       let url: string;
       let blob: Blob | null = null;
 
-      // Try provided URL first
-      if (providedAudioUrl) {
+      // Try provided URL first (skip mock URLs that don't exist)
+      if (providedAudioUrl && !providedAudioUrl.startsWith('/mock/')) {
         url = providedAudioUrl;
       } else if (text) {
         // Check if audio exists in storage

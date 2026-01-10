@@ -33,11 +33,68 @@ export function usePhrasesLibrary(memberId?: string) {
       try {
         if (user?.id) {
           await runMigrationIfNeeded(user.id);
+          console.log('[usePhrasesLibrary] Fetching cards from Supabase for user:', user.id);
           const { cards: dbCards, phraseMap: dbPhrases } = await fetchMemberCardsWithPhrases(user.id);
+          console.log('[usePhrasesLibrary] Supabase returned', dbCards.length, 'cards');
           if (!isActive) return;
-          setCards(dbCards);
-          setPhraseMap(dbPhrases);
-          localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(dbCards));
+          
+          // If Supabase returned cards, use them
+          if (dbCards.length > 0) {
+            console.log('[usePhrasesLibrary] Using Supabase cards');
+            setCards(dbCards);
+            setPhraseMap(dbPhrases);
+            localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(dbCards));
+          } else {
+            // Supabase returned empty, check localStorage for cached cards
+            const key = `solv_phrases_cards_${user.id}`;
+            console.log('[usePhrasesLibrary] Supabase empty, checking localStorage key:', key);
+            const stored = localStorage.getItem(key);
+            console.log('[usePhrasesLibrary] localStorage value exists:', !!stored);
+            if (stored) {
+              try {
+                const parsed = JSON.parse(stored);
+                console.log('[usePhrasesLibrary] Parsed localStorage, found', parsed.length, 'cards');
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  console.log('[usePhrasesLibrary] Using localStorage cards (Supabase empty)');
+                  setCards(parsed);
+                  // Build phrase map from localStorage phrases AND mock data
+                  const localPhraseMap: Record<string, Phrase> = {};
+                  
+                  // First, load any TSV-imported phrases from localStorage
+                  const phrasesKey = `solv_phrases_${user.id}`;
+                  const storedPhrases = localStorage.getItem(phrasesKey);
+                  if (storedPhrases) {
+                    try {
+                      const parsedPhrases = JSON.parse(storedPhrases);
+                      if (Array.isArray(parsedPhrases)) {
+                        for (const phrase of parsedPhrases) {
+                          if (phrase.id) {
+                            localPhraseMap[phrase.id] = phrase;
+                          }
+                        }
+                      }
+                    } catch (err) {
+                      console.error('[usePhrasesLibrary] Failed to parse localStorage phrases:', err);
+                    }
+                  }
+                  
+                  // Then, fill in any missing from mock data
+                  for (const card of parsed) {
+                    if (!localPhraseMap[card.phrase_id]) {
+                      const phrase = getPhraseById(card.phrase_id);
+                      if (phrase) {
+                        localPhraseMap[phrase.id] = phrase;
+                      }
+                    }
+                  }
+                  setPhraseMap(localPhraseMap);
+                }
+              } catch (err) {
+                console.error('[usePhrasesLibrary] Failed to parse localStorage:', err);
+                setCards([]);
+              }
+            }
+          }
         } else {
           const key = `solv_phrases_cards_${effectiveMemberId}`;
           const stored = localStorage.getItem(key);
@@ -46,6 +103,37 @@ export function usePhrasesLibrary(memberId?: string) {
             try {
               const parsed = JSON.parse(stored);
               setCards(parsed);
+              // Build phrase map from localStorage phrases AND mock data
+              const localPhraseMap: Record<string, Phrase> = {};
+              
+              // First, load any TSV-imported phrases from localStorage
+              const phrasesKey = `solv_phrases_${effectiveMemberId}`;
+              const storedPhrases = localStorage.getItem(phrasesKey);
+              if (storedPhrases) {
+                try {
+                  const parsedPhrases = JSON.parse(storedPhrases);
+                  if (Array.isArray(parsedPhrases)) {
+                    for (const phrase of parsedPhrases) {
+                      if (phrase.id) {
+                        localPhraseMap[phrase.id] = phrase;
+                      }
+                    }
+                  }
+                } catch (err) {
+                  console.error('[usePhrasesLibrary] Failed to parse localStorage phrases:', err);
+                }
+              }
+              
+              // Then, fill in any missing from mock data
+              for (const card of parsed) {
+                if (!localPhraseMap[card.phrase_id]) {
+                  const phrase = getPhraseById(card.phrase_id);
+                  if (phrase) {
+                    localPhraseMap[phrase.id] = phrase;
+                  }
+                }
+              }
+              setPhraseMap(localPhraseMap);
             } catch (err) {
               console.error('Failed to load phrase cards:', err);
               setCards([]);

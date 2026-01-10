@@ -3,7 +3,7 @@
  * Create/edit goals with lock-in functionality
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -44,6 +44,20 @@ export function GoalDialog({ open, onOpenChange, goal, onSave }: GoalDialogProps
   const [metric, setMetric] = useState<MetricKey>(goal?.metric || 'overall');
   const [targetValue, setTargetValue] = useState(goal?.targetValue?.toString() || '100');
   const [locked, setLocked] = useState(goal?.locked || false);
+
+  // Reset form when goal prop changes (for editing)
+  useEffect(() => {
+    setName(goal?.name || '');
+    setDescription(goal?.description || '');
+    setAcceptanceCriteria(goal?.acceptanceCriteria || '');
+    setDeadline(goal?.deadline || '');
+    setType(goal?.type || 'skill');
+    setDimension(goal?.dimension || 'pronunciation');
+    setTargetScore(goal?.targetScore?.toString() || '85');
+    setMetric(goal?.metric || 'overall');
+    setTargetValue(goal?.targetValue?.toString() || '100');
+    setLocked(goal?.locked || false);
+  }, [goal, open]);
 
   const handleSave = () => {
     const newGoal: Goal = {

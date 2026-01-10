@@ -146,12 +146,8 @@ export function PhraseCard({ phrase, card, showSpeechIcon, onStartSpeech }: Phra
                 </>
               )}
             </Button>
-            {audioError && (
-              <div className="text-xs text-destructive">
-                {audioError}
-              </div>
-            )}
-            {!audioError && !isLoading && (
+            {/* Hide error display - audio may not be available for all cards */}
+            {!isLoading && (
               <div className="text-xs text-muted-foreground">
                 <Button
                   variant="ghost"

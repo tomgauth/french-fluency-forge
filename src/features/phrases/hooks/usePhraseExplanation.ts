@@ -47,11 +47,18 @@ export function usePhraseExplanation(phraseId: string) {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      // Get session token
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      
       const response = await fetch(`${supabaseUrl}/functions/v1/phrase-explain`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
+          'Authorization': `Bearer ${accessToken || anonKey}`,
+          'apikey': anonKey,
         },
         body: JSON.stringify({
           phraseId,

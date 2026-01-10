@@ -237,25 +237,25 @@ const IntakeForm = ({ sessionId, onComplete, onSkip }: IntakeFormProps) => {
                 className="space-y-3"
               >
                 {TRACK_OPTIONS.map((option) => (
-                  <div
+                  <label
                     key={option.value}
+                    htmlFor={`track-${option.value}`}
                     className={`flex items-start space-x-3 p-4 rounded-lg border transition-colors cursor-pointer ${
                       primaryTrack === option.value
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/50"
                     }`}
-                    onClick={() => setPrimaryTrack(option.value)}
                   >
                     <RadioGroupItem value={option.value} id={`track-${option.value}`} className="mt-1" />
                     <div>
-                      <Label htmlFor={`track-${option.value}`} className="font-medium cursor-pointer">
+                      <span className="font-medium">
                         {option.label}
-                      </Label>
+                      </span>
                       <p className="text-sm text-muted-foreground mt-1">
                         {option.description}
                       </p>
                     </div>
-                  </div>
+                  </label>
                 ))}
               </RadioGroup>
             </CardContent>
