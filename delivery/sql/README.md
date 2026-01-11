@@ -1,48 +1,84 @@
-# SQL Migrations for Tom
+# SQL Migrations - Delivery Package
 
-These SQL files need to be run on Tom's Supabase project.
+Hey Tom! Here are the database migrations you need to run to enable the new features I built.
 
-## ⚠️ SAFE TO RUN MULTIPLE TIMES
+## 🎯 What You Need to Run
 
-All migrations are **idempotent** - they use:
-- `CREATE TABLE IF NOT EXISTS`
-- `DROP POLICY IF EXISTS` before `CREATE POLICY`
-- `ON CONFLICT (id) DO NOTHING` for bucket creation
+Run these 3 files **in order**. Just copy-paste each one into Supabase SQL Editor and click "Run":
 
-## How to Run
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `01_habits_goals.sql` | Creates `habits`, `habit_cells`, `goals` tables |
+| 2 | `02_phrases_write_policies.sql` | Fixes TSV import (adds INSERT/UPDATE/DELETE to phrases) |
+| 3 | `03_phrases_audio_bucket.sql` | Creates storage bucket for audio files |
+
+## ✅ Safe to Run
+
+All migrations are **idempotent** - meaning:
+- You can run them multiple times without breaking anything
+- They use `CREATE TABLE IF NOT EXISTS` and `DROP POLICY IF EXISTS`
+- No need to worry about duplicates
+
+## 🔧 How to Run
 
 1. Go to **Supabase Dashboard** → **SQL Editor**
 2. Click **"New query"**
-3. Copy/paste the contents of each file
-4. Click **"Run"**
-5. Verify "Success" message appears
+3. Copy the entire contents of `01_habits_goals.sql`
+4. Click **"Run"** → should say "Success"
+5. Repeat for `02_phrases_write_policies.sql`
+6. Repeat for `03_phrases_audio_bucket.sql`
 
-## Execution Order
+## 📋 After Running
 
-Run these files **in numerical order**:
+Verify everything worked:
 
-| File | Description | Status |
-|------|-------------|--------|
-| `01_habits_goals.sql` | Creates habits, habit_cells, goals tables | **MUST RUN** - NEW tables |
-| `02_phrases_write_policies.sql` | Adds INSERT/UPDATE/DELETE policies for phrases | **MUST RUN** - Fixes TSV import 403 error |
-| `03_phrases_audio_bucket.sql` | Creates phrases-audio storage bucket | **OPTIONAL** - Only if using audio |
+1. **Check Tables:** Go to Table Editor and confirm you see:
+   - `habits`
+   - `habit_cells`
+   - `goals`
 
-## Notes
+2. **Check Policies:** Go to Authentication → Policies → find `phrases` table. You should now see 4 policies:
+   - "Phrases are viewable by everyone" (existing)
+   - "Authenticated users can insert phrases" (new)
+   - "Authenticated users can update phrases" (new)
+   - "Authenticated users can delete phrases" (new)
+
+3. **Check Storage:** Go to Storage and confirm `phrases-audio` bucket exists
+
+## ❓ If You Hit Issues
+
+- **"policy already exists"** → That's fine, skip that file
+- **"table already exists"** → That's fine, the IF NOT EXISTS handles it
+- **Other errors** → Send me the error message and I'll help debug
+
+---
+
+## 📁 File Descriptions
 
 ### 01_habits_goals.sql
-- Creates 3 new tables: `habits`, `habit_cells`, `goals`
-- Includes RLS (Row Level Security) policies
-- Safe to run multiple times
+Creates the tables for the Habits Tracker and Goals features:
+- `habits` - User's daily/weekly habits
+- `habit_cells` - Individual habit completion records
+- `goals` - User's learning goals (skill targets, volume goals, etc.)
+
+All include proper RLS policies so users only see their own data.
 
 ### 02_phrases_write_policies.sql
-- Tom's existing `phrases` table only has SELECT policy
-- This adds INSERT/UPDATE/DELETE policies
-- Without this, TSV import fails with 403 Forbidden
-- Safe to run multiple times (uses DROP IF EXISTS)
+Your existing `phrases` table only has a SELECT policy. This adds:
+- INSERT policy (so TSV import works)
+- UPDATE policy (so users can edit phrases)
+- DELETE policy (so users can remove phrases)
+
+**This fixes the 403 error when importing TSV files!**
 
 ### 03_phrases_audio_bucket.sql
-- Creates storage bucket for ElevenLabs TTS audio files
-- Safe to run multiple times (uses ON CONFLICT DO NOTHING)
+Creates a public storage bucket for phrase audio files (ElevenLabs TTS).
+
+---
+
+## 🧪 Testing Note (Ignore This)
+
+There's also a `00_toms_baseline.sql` file in this folder - **ignore it**. That was just for my testing to simulate your existing database on a fresh Supabase project. You don't need to run it since you already have the `phrases` table.
 
 ## Verification
 
