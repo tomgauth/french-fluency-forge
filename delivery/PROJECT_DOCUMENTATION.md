@@ -198,12 +198,14 @@ Already implemented in the codebase.
 
 ---
 
-## Part 3: Additional Fixes
+## Part 3: Bonus Fixes (Not in Original Scope)
+
+While working on the project, I identified and fixed several additional issues at no extra charge:
 
 ### 3.1 IntakeForm Radio Buttons
 
 **Problem Found:**  
-Click propagation issue causing unexpected behavior.
+Click propagation issue causing unexpected behavior in the assessment intake form.
 
 **Solution:**  
 Fixed event handling for radio button selections.
@@ -213,7 +215,7 @@ Fixed event handling for radio button selections.
 ### 3.2 ConversationModule Scope Bug
 
 **Problem Found:**  
-Pre-existing variable scope bug that could cause runtime errors.
+Pre-existing variable scope bug that could cause runtime errors during conversations.
 
 **Solution:**  
 Fixed variable declarations in the module.
@@ -227,6 +229,76 @@ Edit dialog was not showing existing goal data.
 
 **Solution:**  
 Fixed form state management to populate correctly on edit.
+
+---
+
+### 3.4 Edge Function Authentication (phrase-explain)
+
+**Problem Found:**  
+401 Unauthorized errors when calling the phrase-explain Edge Function.
+
+**Solution:**  
+Fixed authentication handling and redeployed with proper configuration.
+
+---
+
+### 3.5 OpenAI JSON Schema Enforcement
+
+**Problem Found:**  
+OpenAI was returning PascalCase keys instead of snake_case, causing explanation panels to crash.
+
+**Solution:**  
+Added explicit schema enforcement in the prompt to ensure consistent JSON format.
+
+---
+
+### 3.6 UUID Format Correction
+
+**Problem Found:**  
+Starter pack phrases had invalid UUID format (8 characters instead of 12 in last segment).
+
+**Solution:**  
+Fixed UUID generation to produce valid format.
+
+---
+
+### 3.7 Supabase RLS Policies for Phrases
+
+**Problem Found:**  
+Users couldn't save imported phrases due to missing RLS INSERT policies.
+
+**Solution:**  
+Created proper Row Level Security policies for `user_phrases` table.
+
+---
+
+### 3.8 Storage Bucket Setup
+
+**Problem Found:**  
+Audio files couldn't be stored/retrieved.
+
+**Solution:**  
+Created `phrases-audio` storage bucket with proper public access configuration.
+
+---
+
+### 3.9 Database Migration Files
+
+**Value Added:**  
+Created SQL migration files for easy setup on any Supabase instance:
+- `01_habits_goals.sql` - Tables for habits and goals
+- `02_phrases_write_policies.sql` - RLS policies for phrases
+- `03_phrases_audio_bucket.sql` - Storage bucket configuration
+
+---
+
+### 3.10 Comprehensive Documentation
+
+**Value Added:**  
+Created detailed project documentation including:
+- This delivery folder with summary and documentation
+- Screenshots demonstrating each feature
+- SQL files ready to run
 
 ---
 

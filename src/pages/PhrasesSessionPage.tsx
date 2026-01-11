@@ -239,7 +239,7 @@ export default function PhrasesSessionPage() {
 
             {/* Keyboard shortcuts hint */}
             <div className="text-center text-xs text-muted-foreground">
-              <p>Tip: Use keyboard shortcuts 1-4 for rating (coming soon)</p>
+              <p>Tip: Use keyboard shortcuts 1-4 for rating</p>
             </div>
           </div>
         </div>
