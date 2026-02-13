@@ -226,6 +226,11 @@ export default function PhrasesLandingPage() {
                       memberId={memberId}
                       onImport={handleTSVImport}
                     />
+                    <TSVImportDialog
+                      memberId={memberId}
+                      onImport={handleTSVImport}
+                      importMode="recognition"
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -386,7 +391,13 @@ export default function PhrasesLandingPage() {
                       <TSVImportDialog onImport={handleTSVImport} memberId={memberId}>
                         <Button variant="outline">
                           <Upload className="w-4 h-4 mr-2" />
-                          Import TSV
+                          Import Recall TSV
+                        </Button>
+                      </TSVImportDialog>
+                      <TSVImportDialog onImport={handleTSVImport} memberId={memberId} importMode="recognition">
+                        <Button variant="outline">
+                          <Upload className="w-4 h-4 mr-2" />
+                          Import Recognition TSV
                         </Button>
                       </TSVImportDialog>
                     </div>
@@ -420,4 +431,3 @@ export default function PhrasesLandingPage() {
     </AdminPadding>
   );
 }
-

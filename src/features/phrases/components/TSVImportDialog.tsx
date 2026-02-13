@@ -25,6 +25,7 @@ import type { Phrase, MemberPhraseCard } from '../types';
 interface TSVImportDialogProps {
   onImport: (phrases: Phrase[], cards: MemberPhraseCard[]) => Promise<void>;
   memberId: string;
+  importMode?: Phrase['mode'];
   children?: React.ReactNode;
 }
 
@@ -110,7 +111,8 @@ function parseTSV(content: string): ParsedRow[] {
  */
 function createPhrasesAndCards(
   rows: ParsedRow[],
-  memberId: string
+  memberId: string,
+  importMode: Phrase['mode']
 ): { phrases: Phrase[]; cards: MemberPhraseCard[] } {
   const now = new Date();
   const phrases: Phrase[] = [];
@@ -121,16 +123,27 @@ function createPhrasesAndCards(
     const cardId = crypto.randomUUID();
 
     // Create phrase
-    const phrase: Phrase = {
-      id: phraseId,
-      mode: 'recall',
-      prompt_en: row.english,
-      canonical_fr: row.french,
-      answers_fr: [row.french, ...row.alternates],
-      tags: row.tags,
-      difficulty: row.difficulty,
-      created_at: now.toISOString(),
-    };
+    const phrase: Phrase = importMode === 'recognition'
+      ? {
+          id: phraseId,
+          mode: 'recognition',
+          canonical_fr: row.french,
+          transcript_fr: row.french,
+          translation_en: row.english,
+          tags: row.tags,
+          difficulty: row.difficulty,
+          created_at: now.toISOString(),
+        }
+      : {
+          id: phraseId,
+          mode: 'recall',
+          prompt_en: row.english,
+          canonical_fr: row.french,
+          answers_fr: [row.french, ...row.alternates],
+          tags: row.tags,
+          difficulty: row.difficulty,
+          created_at: now.toISOString(),
+        };
 
     // Create card
     const card: MemberPhraseCard = {
@@ -160,7 +173,7 @@ function createPhrasesAndCards(
   return { phrases, cards };
 }
 
-export function TSVImportDialog({ onImport, memberId, children }: TSVImportDialogProps) {
+export function TSVImportDialog({ onImport, memberId, importMode = 'recall', children }: TSVImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [tsvContent, setTsvContent] = useState('');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
@@ -182,7 +195,7 @@ export function TSVImportDialog({ onImport, memberId, children }: TSVImportDialo
 
     setIsImporting(true);
     try {
-      const { phrases, cards } = createPhrasesAndCards(parsedRows, memberId);
+      const { phrases, cards } = createPhrasesAndCards(parsedRows, memberId, importMode);
       await onImport(phrases, cards);
       setImportResult({
         success: true,
@@ -220,7 +233,7 @@ export function TSVImportDialog({ onImport, memberId, children }: TSVImportDialo
         {children || (
           <Button variant="outline">
             <Upload className="w-4 h-4 mr-2" />
-            Import TSV
+            {importMode === 'recognition' ? 'Import Recognition TSV' : 'Import Recall TSV'}
           </Button>
         )}
       </DialogTrigger>
@@ -228,10 +241,10 @@ export function TSVImportDialog({ onImport, memberId, children }: TSVImportDialo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            Import Phrases from TSV
+            Import {importMode === 'recognition' ? 'Recognition' : 'Recall'} Phrases from TSV
           </DialogTitle>
           <DialogDescription>
-            Paste tab-separated values to create flashcards. Each row creates one phrase.
+            Paste tab-separated values to create {importMode === 'recognition' ? 'recognition' : 'recall'} phrases. Each row creates one phrase.
           </DialogDescription>
         </DialogHeader>
 
