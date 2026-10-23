@@ -71,6 +71,16 @@ Maîtrise (barre par carte) : stabilité FSRS ramenée sur 0 à 100 (100 = 90 jo
 Pour changer un seuil : modifier la vue dans une nouvelle migration, puis lancer une
 synchro en mode `full` (voir plus bas).
 
+## État au 23 octobre 2026
+
+- Migrations appliquées sur `solv-flashcards-v0`, fonction Edge déployée (v2),
+  secrets Vault créés, trigger et job cron en place.
+- Test à blanc (`dry_run=true`) réussi sur la base live : 26 étudiants,
+  15 141 cartes parcourues en 27 s, aucune écriture.
+- Reste à faire : ajouter le secret `CODA_API_TOKEN` (étape 4 ci-dessous), puis
+  lancer la première synchro (étape 5). Les lignes de la table Étudiants ont été
+  pré-remplies une fois à la main ; la synchro les écrasera avec les mêmes clés.
+
 ## Mise en route (une fois)
 
 1. **Migrations** (déjà appliquées sur le projet `solv-flashcards-v0`) :
