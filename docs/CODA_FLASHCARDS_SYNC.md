@@ -21,6 +21,7 @@ Tout ce qui est ajouté est nouveau et préfixé `coda_` :
 | `coda_sync_runs` | table privée | journal des synchros (statut, compteurs, erreur) |
 | `coda_sync_cards` | table privée | empreinte de la dernière version envoyée, par carte |
 | `coda_sync_secret_matches(text)` | fonction SQL | vérifie le secret partagé stocké dans Vault |
+| `coda_sync_coda_token()` | fonction SQL | fournit le jeton API Coda (Vault) au service role |
 | `coda_sync_request(text)` | fonction SQL | envoie l'appel HTTP (pg_net, asynchrone, erreurs avalées) |
 | `coda_sync_after_import` | trigger | AFTER INSERT ... FOR EACH STATEMENT sur `member_phrase_imports` |
 | `coda-flashcards-sync-daily` | job pg_cron | tous les jours à 03:10 UTC |
@@ -73,13 +74,16 @@ synchro en mode `full` (voir plus bas).
 
 ## État au 23 octobre 2026
 
-- Migrations appliquées sur `solv-flashcards-v0`, fonction Edge déployée (v2),
-  secrets Vault créés, trigger et job cron en place.
-- Test à blanc (`dry_run=true`) réussi sur la base live : 26 étudiants,
-  15 141 cartes parcourues en 27 s, aucune écriture.
-- Reste à faire : ajouter le secret `CODA_API_TOKEN` (étape 4 ci-dessous), puis
-  lancer la première synchro (étape 5). Les lignes de la table Étudiants ont été
-  pré-remplies une fois à la main ; la synchro les écrasera avec les mêmes clés.
+- Migrations appliquées sur `solv-flashcards-v0`, fonction Edge déployée (v3),
+  secrets Vault créés (`coda_sync_url`, `coda_sync_secret`, `coda_api_token`),
+  trigger et job cron en place.
+- Test à blanc (`dry_run=true`) réussi : 26 étudiants, 15 141 cartes parcourues
+  en 27 s, aucune écriture.
+- Première synchro complète réussie : 15 141 cartes et 26 étudiants poussés dans
+  Coda en deux passes (105 s puis 88 s, continuation automatique), zéro carte
+  restante à envoyer.
+- Le jeton Coda est lu depuis le Vault (`coda_api_token`) par la fonction Edge ;
+  un secret `CODA_API_TOKEN` sur la fonction, s'il est ajouté un jour, a priorité.
 
 ## Mise en route (une fois)
 
@@ -95,13 +99,13 @@ synchro en mode `full` (voir plus bas).
 3. **Fonction Edge** : `supabase functions deploy coda-flashcards-sync --no-verify-jwt`
    (déjà déployée). Elle fait sa propre authentification (secret Vault ou clé service
    role).
-4. **Jeton Coda** (seule étape manuelle restante) : créer un jeton API sur
-   https://coda.io/account (section API settings) avec accès au doc, puis l'ajouter
-   dans Supabase > Edge Functions > Secrets sous le nom `CODA_API_TOKEN`.
+4. **Jeton Coda** (déjà fait) : jeton API créé sur https://coda.io/account et stocké
+   dans le Vault sous `coda_api_token` (`select vault.create_secret('<jeton>', 'coda_api_token');`).
+   Pour le renouveler : `select vault.update_secret(id, '<nouveau jeton>') from vault.secrets where name = 'coda_api_token';`
+   Alternative : un secret `CODA_API_TOKEN` sur la fonction Edge, qui a priorité.
    Optionnel : `CODA_DOC_ID`, `CODA_TABLE_CARDS`, `CODA_TABLE_STUDENTS` pour pointer
    vers un autre doc (valeurs par défaut dans `index.ts`).
-5. **Première synchro complète** (environ 15 000 cartes, quelques minutes, la fonction
-   s'enchaîne toute seule par tranches de 100 s) :
+5. **Première synchro complète** (déjà faite ; à relancer après un changement de seuils) :
    ```sql
    select public.coda_sync_request('manual');
    ```
@@ -166,13 +170,14 @@ drop trigger if exists coda_sync_after_import on public.member_phrase_imports;
 drop function if exists public.coda_sync_on_import();
 drop function if exists public.coda_sync_request(text);
 drop function if exists public.coda_sync_secret_matches(text);
+drop function if exists public.coda_sync_coda_token();
 drop function if exists public.coda_export_cards_deleted(integer);
 drop function if exists public.coda_export_cards_dirty(timestamptz, timestamptz, uuid, integer, boolean);
 drop view if exists public.coda_export_students;
 drop view if exists public.coda_export_cards_base;
 drop table if exists public.coda_sync_cards;
 drop table if exists public.coda_sync_runs;
-delete from vault.secrets where name in ('coda_sync_url', 'coda_sync_secret');
+delete from vault.secrets where name in ('coda_sync_url', 'coda_sync_secret', 'coda_api_token');
 ```
 
 Puis supprimer la fonction Edge `coda-flashcards-sync` dans le dashboard. Aucune
