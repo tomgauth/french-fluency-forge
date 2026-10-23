@@ -54,6 +54,10 @@ revoke all on public.coda_sync_cards from anon, authenticated;
 -- rôle qui applique la migration : on les donne explicitement.
 grant select, insert, update, delete on public.coda_sync_runs  to service_role;
 grant select, insert, update, delete on public.coda_sync_cards to service_role;
+-- Les vues sont en security_invoker : le service role doit pouvoir lire les
+-- tables sous-jacentes (lecture seule, aucun droit d'écriture ajouté).
+grant select on public.member_phrase_imports to service_role;
+grant select on public.phrase_review_logs   to service_role;
 
 -- ------------------------------------------------------------
 -- 2. Vue de base : une ligne par carte, avec la catégorie pédagogique
