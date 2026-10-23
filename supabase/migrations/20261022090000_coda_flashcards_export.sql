@@ -50,6 +50,10 @@ alter table public.coda_sync_cards enable row level security;
 -- Pas de policy : seul le service role (qui ignore la RLS) lit/écrit ces tables.
 revoke all on public.coda_sync_runs  from anon, authenticated;
 revoke all on public.coda_sync_cards from anon, authenticated;
+-- Le service role n'hérite pas forcément des privilèges par défaut selon le
+-- rôle qui applique la migration : on les donne explicitement.
+grant select, insert, update, delete on public.coda_sync_runs  to service_role;
+grant select, insert, update, delete on public.coda_sync_cards to service_role;
 
 -- ------------------------------------------------------------
 -- 2. Vue de base : une ligne par carte, avec la catégorie pédagogique

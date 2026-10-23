@@ -226,7 +226,19 @@ async function runSync(supabase: SupabaseClient, env: Env, opts: SyncOptions): P
     duration_ms: 0,
   };
 
-  const acquired = await acquireRun(supabase, opts);
+  let acquired: Awaited<ReturnType<typeof acquireRun>>;
+  try {
+    acquired = await acquireRun(supabase, opts);
+  } catch (err) {
+    // Typiquement : droits manquants sur coda_sync_runs. On répond en JSON
+    // plutôt que de laisser l'exception produire un 500 opaque.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[coda-flashcards-sync] acquireRun failed:', message);
+    result.status = 'error';
+    result.error = message;
+    result.duration_ms = Date.now() - startedAt;
+    return result;
+  }
   if ('skipped' in acquired) {
     result.status = 'skipped';
     result.error = acquired.skipped;
