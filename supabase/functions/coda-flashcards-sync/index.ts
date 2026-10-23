@@ -20,7 +20,7 @@
  *
  * Variables d'environnement :
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   (fournies par Supabase)
- *   CODA_API_TOKEN                            (obligatoire, jeton API Coda)
+ *   CODA_API_TOKEN                            (jeton API Coda ; sinon secret Vault coda_api_token)
  *   CODA_DOC_ID, CODA_TABLE_CARDS, CODA_TABLE_STUDENTS (optionnelles, valeurs par défaut ci-dessous)
  *   CODA_SYNC_SECRET                          (optionnelle, secret alternatif au Vault)
  */
@@ -210,6 +210,19 @@ async function lastSuccessfulRunStart(supabase: SupabaseClient): Promise<string 
   return data && data.length > 0 ? (data[0].started_at as string) : null;
 }
 
+/**
+ * Jeton Coda : variable d'environnement CODA_API_TOKEN si elle existe, sinon le
+ * secret Vault `coda_api_token` lu via un RPC réservé au service role.
+ */
+async function codaTokenFromVault(supabase: SupabaseClient): Promise<string | null> {
+  const { data, error } = await supabase.rpc('coda_sync_coda_token');
+  if (error) {
+    console.error('[coda-flashcards-sync] coda token lookup failed:', error.message);
+    return null;
+  }
+  return typeof data === 'string' && data.length > 0 ? data : null;
+}
+
 async function runSync(supabase: SupabaseClient, env: Env, opts: SyncOptions): Promise<SyncResult> {
   const startedAt = Date.now();
   const syncedAtIso = new Date(startedAt).toISOString();
@@ -256,8 +269,11 @@ async function runSync(supabase: SupabaseClient, env: Env, opts: SyncOptions): P
     let cardIds: Record<CardColumnKey, string> | null = null;
     let studentIds: Record<StudentColumnKey, string> | null = null;
     if (!opts.dryRun) {
-      if (!env.codaToken) throw new Error('CODA_API_TOKEN manquant (secret de la fonction Edge)');
-      coda = new CodaClient(env.codaToken, env.codaDocId);
+      const codaToken = env.codaToken ?? (await codaTokenFromVault(supabase));
+      if (!codaToken) {
+        throw new Error('jeton Coda manquant (secret CODA_API_TOKEN de la fonction Edge ou secret Vault coda_api_token)');
+      }
+      coda = new CodaClient(codaToken, env.codaDocId);
       const [cardCols, studentCols] = await Promise.all([
         coda.listColumns(env.cardsTable),
         coda.listColumns(env.studentsTable),

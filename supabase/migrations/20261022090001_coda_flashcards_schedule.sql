@@ -33,6 +33,22 @@ $$;
 revoke all on function public.coda_sync_secret_matches(text) from public, anon, authenticated;
 grant execute on function public.coda_sync_secret_matches(text) to service_role;
 
+-- Jeton API Coda : stocké dans Vault (vault.create_secret('<jeton>', 'coda_api_token'))
+-- et lu par la fonction Edge via ce RPC réservé au service role. Alternative :
+-- le secret CODA_API_TOKEN de la fonction Edge, qui a priorité s'il existe.
+create or replace function public.coda_sync_coda_token()
+returns text
+language sql
+stable
+security definer
+set search_path = public, vault
+as $$
+  select decrypted_secret from vault.decrypted_secrets where name = 'coda_api_token' limit 1;
+$$;
+
+revoke all on function public.coda_sync_coda_token() from public, anon, authenticated;
+grant execute on function public.coda_sync_coda_token() to service_role;
+
 -- ------------------------------------------------------------
 -- 6. Déclenchement HTTP (pg_net, asynchrone, jamais bloquant)
 -- ------------------------------------------------------------
