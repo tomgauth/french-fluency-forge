@@ -219,7 +219,7 @@ export function LibraryTable({
                             <>
                               <DropdownMenuItem onClick={() => onBury(card.id)}>
                                 <EyeOff className="w-4 h-4 mr-2" />
-                                Bury
+                                Bury (until tomorrow)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => onSuspend(card.id)}>
                                 <Pause className="w-4 h-4 mr-2" />

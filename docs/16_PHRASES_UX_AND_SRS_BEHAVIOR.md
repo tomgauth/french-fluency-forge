@@ -184,10 +184,15 @@ User clicks actions menu (⋯) on card:
 
 3. "Bury (until tomorrow)":
    - Confirmation dialog
-   - Card status: "active" → "buried"
+   - Card status: "active" → "buried", paused_reason = "buried", paused_at = now
    - Card removed from queue
    - Next card shown immediately
    - Toast: "Phrase buried - Hidden until tomorrow"
+   - Automatic un-bury: whenever the member's cards are loaded (session or
+     library) or a session starts, every buried card whose paused_at is on a
+     previous local day goes back to "active" (paused_reason/paused_at cleared)
+     and the change is persisted. Buried cards with no paused_at (legacy) are
+     un-buried too. Logic lives in `utils/bury.ts`; nothing runs server-side.
 
 4. "Suspend":
    - Confirmation dialog

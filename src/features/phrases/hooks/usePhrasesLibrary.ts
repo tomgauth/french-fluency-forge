@@ -9,6 +9,7 @@ import type { MemberPhraseCard, Phrase, LibraryFilters, PhraseStats } from '../t
 import { getPhraseById } from '../data/mockPhrasesData';
 import { fetchMemberCardsWithPhrases, upsertMemberCards } from '../services/phrasesApi';
 import { runMigrationIfNeeded } from '../utils/migrateLocalStorage';
+import { buryCardUntilTomorrow, unburyExpiredCards } from '../utils/bury';
 
 export function usePhrasesLibrary(memberId?: string) {
   const { user } = useAuth();
@@ -28,6 +29,20 @@ export function usePhrasesLibrary(memberId?: string) {
   // Load cards from Supabase (or localStorage for guests)
   useEffect(() => {
     let isActive = true;
+
+    // Bring back cards buried on a previous day, and persist that change so
+    // Supabase / the local cache stop reporting them as buried.
+    const hydrate = (loaded: MemberPhraseCard[]): MemberPhraseCard[] => {
+      const { cards: next, changed } = unburyExpiredCards(loaded);
+      if (changed.length > 0) {
+        localStorage.setItem(`solv_phrases_cards_${effectiveMemberId}`, JSON.stringify(next));
+        if (user?.id) {
+          void upsertMemberCards(changed);
+        }
+      }
+      return next;
+    };
+
     const load = async () => {
       setLoading(true);
       try {
@@ -37,13 +52,14 @@ export function usePhrasesLibrary(memberId?: string) {
           const { cards: dbCards, phraseMap: dbPhrases } = await fetchMemberCardsWithPhrases(user.id);
           console.log('[usePhrasesLibrary] Supabase returned', dbCards.length, 'cards');
           if (!isActive) return;
-          
+
           // If Supabase returned cards, use them
           if (dbCards.length > 0) {
             console.log('[usePhrasesLibrary] Using Supabase cards');
-            setCards(dbCards);
+            const hydrated = hydrate(dbCards);
+            setCards(hydrated);
             setPhraseMap(dbPhrases);
-            localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(dbCards));
+            localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(hydrated));
           } else {
             // Supabase returned empty, check localStorage for cached cards
             const key = `solv_phrases_cards_${user.id}`;
@@ -56,7 +72,7 @@ export function usePhrasesLibrary(memberId?: string) {
                 console.log('[usePhrasesLibrary] Parsed localStorage, found', parsed.length, 'cards');
                 if (Array.isArray(parsed) && parsed.length > 0) {
                   console.log('[usePhrasesLibrary] Using localStorage cards (Supabase empty)');
-                  setCards(parsed);
+                  setCards(hydrate(parsed));
                   // Build phrase map from localStorage phrases AND mock data
                   const localPhraseMap: Record<string, Phrase> = {};
                   
@@ -102,7 +118,7 @@ export function usePhrasesLibrary(memberId?: string) {
           if (stored) {
             try {
               const parsed = JSON.parse(stored);
-              setCards(parsed);
+              setCards(hydrate(parsed));
               // Build phrase map from localStorage phrases AND mock data
               const localPhraseMap: Record<string, Phrase> = {};
               
@@ -242,9 +258,7 @@ export function usePhrasesLibrary(memberId?: string) {
   // Actions
   const buryCard = (cardId: string) => {
     const updated = cards.map((card) =>
-      card.id === cardId
-        ? { ...card, status: 'buried' as const, updated_at: new Date().toISOString() }
-        : card
+      card.id === cardId ? buryCardUntilTomorrow(card) : card
     );
     saveCards(updated);
   };
@@ -270,7 +284,13 @@ export function usePhrasesLibrary(memberId?: string) {
   const reactivateCard = (cardId: string) => {
     const updated = cards.map((card) =>
       card.id === cardId
-        ? { ...card, status: 'active' as const, updated_at: new Date().toISOString() }
+        ? {
+            ...card,
+            status: 'active' as const,
+            paused_reason: undefined,
+            paused_at: undefined,
+            updated_at: new Date().toISOString(),
+          }
         : card
     );
     saveCards(updated);

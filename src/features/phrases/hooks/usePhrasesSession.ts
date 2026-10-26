@@ -18,6 +18,7 @@ import { usePhrasesSettings } from './usePhrasesSettings';
 import type { SpeechRecognitionResult } from '../services/speechRecognition';
 import { fetchMemberCardsWithPhrases, insertReviewLog, upsertMemberCards } from '../services/phrasesApi';
 import { runMigrationIfNeeded } from '../utils/migrateLocalStorage';
+import { buryCardUntilTomorrow, unburyExpiredCards } from '../utils/bury';
 
 export function usePhrasesSession() {
   const { user } = useAuth();
@@ -34,6 +35,20 @@ export function usePhrasesSession() {
   // Load cards and logs from Supabase (or localStorage for guests)
   useEffect(() => {
     let isActive = true;
+
+    // Bring back cards buried on a previous day, and persist that change so
+    // Supabase / the local cache stop reporting them as buried.
+    const hydrate = (loaded: MemberPhraseCard[]): MemberPhraseCard[] => {
+      const { cards: next, changed } = unburyExpiredCards(loaded);
+      if (changed.length > 0) {
+        localStorage.setItem(`solv_phrases_cards_${memberId}`, JSON.stringify(next));
+        if (user?.id) {
+          void upsertMemberCards(changed);
+        }
+      }
+      return next;
+    };
+
     const load = async () => {
       setLoading(true);
       try {
@@ -41,12 +56,13 @@ export function usePhrasesSession() {
           await runMigrationIfNeeded(user.id);
           const { cards: dbCards, phraseMap: dbPhrases } = await fetchMemberCardsWithPhrases(user.id);
           if (!isActive) return;
-          
+
           // If Supabase returned cards, use them
           if (dbCards.length > 0) {
-            setCards(dbCards);
+            const hydrated = hydrate(dbCards);
+            setCards(hydrated);
             setPhraseMap(dbPhrases);
-            localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(dbCards));
+            localStorage.setItem(`solv_phrases_cards_${user.id}`, JSON.stringify(hydrated));
           } else {
             // Supabase returned empty, check localStorage for cached cards
             const cardsKey = `solv_phrases_cards_${user.id}`;
@@ -56,7 +72,7 @@ export function usePhrasesSession() {
                 const parsed = JSON.parse(storedCards);
                 if (Array.isArray(parsed) && parsed.length > 0) {
                   console.log('[usePhrasesSession] Using localStorage cards (Supabase empty)');
-                  setCards(parsed);
+                  setCards(hydrate(parsed));
                   // Build phrase map from mock data AND localStorage phrases
                   const localPhraseMap: Record<string, Phrase> = {};
                   
@@ -104,7 +120,7 @@ export function usePhrasesSession() {
           if (storedCards) {
             try {
               const parsedCards = JSON.parse(storedCards);
-              setCards(parsedCards);
+              setCards(hydrate(parsedCards));
               // Build phrase map from localStorage phrases AND mock data
               const localPhraseMap: Record<string, Phrase> = {};
               
@@ -190,8 +206,14 @@ export function usePhrasesSession() {
 
   // Start a new session
   const startSession = useCallback(() => {
-    const queue = buildSessionQueue(cards, settings.new_per_day, settings.reviews_per_day);
-    
+    // A tab left open past midnight: un-bury yesterday's cards before building the queue
+    const { cards: freshCards, changed } = unburyExpiredCards(cards);
+    if (changed.length > 0) {
+      persistCards(freshCards);
+    }
+
+    const queue = buildSessionQueue(freshCards, settings.new_per_day, settings.reviews_per_day);
+
     if (queue.length === 0) {
       return null;
     }
@@ -207,7 +229,7 @@ export function usePhrasesSession() {
 
     setSessionState(newSession);
     return newSession;
-  }, [cards, settings]);
+  }, [cards, settings, persistCards]);
 
   // Get current card
   const currentCard = sessionState && sessionState.currentIndex < sessionState.queue.length
@@ -361,12 +383,8 @@ export function usePhrasesSession() {
   // Card actions during session
   const buryCard = useCallback(() => {
     if (!currentCard) return;
-    
-    const updatedCard = {
-      ...currentCard,
-      status: 'buried' as const,
-      updated_at: new Date().toISOString(),
-    };
+
+    const updatedCard = buryCardUntilTomorrow(currentCard);
     const updatedCards = cards.map((c) => c.id === updatedCard.id ? updatedCard : c);
     persistCards(updatedCards);
 
