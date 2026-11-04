@@ -16,9 +16,13 @@
  *   member_email | member_id : l'élève (obligatoire sauf si phrase_ids)
  *   pack        : tag `pack:...` exact, ou un fragment (sans le préfixe `pack:`)
  *   phrase_ids  : liste d'IDs de phrases (ignore member/pack)
- *   async       : true pour répondre tout de suite et travailler en tâche de fond
- *   max_seconds : budget temps avant continuation (défaut 100)
+ *   max_seconds : budget temps d'un appel (défaut 100) ; s'il reste du travail,
+ *                 la fonction ré-enfile un appel via le RPC SQL
+ *                 public.phrases_audio_request (pg_net), car le runtime Edge
+ *                 coupe les tâches de fond ~20 s après la réponse
+ *   chain       : numéro de continuation (interne, max 12)
  *   dry_run     : true pour compter sans générer
+ *   async       : true pour répondre tout de suite (déconseillé, voir ci-dessus)
  */
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -118,6 +122,11 @@ async function isAuthorized(req: Request, params: URLSearchParams, serviceRoleKe
     return false;
   }
   return data === true;
+}
+
+async function memberEmail(supabase: SupabaseClient, memberId: string): Promise<string | null> {
+  const { data } = await supabase.from('profiles').select('email').eq('id', memberId).limit(1);
+  return data && data.length > 0 ? (data[0].email as string) : null;
 }
 
 async function resolveMember(supabase: SupabaseClient, p: Params): Promise<string | null> {
@@ -262,13 +271,18 @@ async function run(supabase: SupabaseClient, env: { supabaseUrl: string; service
     }
 
     if (result.has_more && !p.dry_run && (p.chain ?? 0) < MAX_CHAIN) {
-      const continuation = fetch(`${env.supabaseUrl}/functions/v1/phrases-audio-backfill`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${env.serviceRoleKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...p, async: true, chain: (p.chain ?? 0) + 1, source: 'continuation' }),
-      }).catch((err) => console.error('[phrases-audio-backfill] continuation failed:', err));
-      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(continuation);
-      result.continuation_scheduled = true;
+      // Continuation via pg_net (RPC SQL) : indépendante du cycle de vie de cet isolate.
+      const email = p.member_email ?? (memberId ? await memberEmail(supabase, memberId) : null);
+      if (email) {
+        const { error } = await supabase.rpc('phrases_audio_request', {
+          p_member_email: email,
+          p_pack: p.pack ?? null,
+          p_source: 'continuation',
+          p_chain: (p.chain ?? 0) + 1,
+        });
+        if (error) console.error('[phrases-audio-backfill] continuation failed:', error.message);
+        else result.continuation_scheduled = true;
+      }
     }
   } catch (err) {
     result.status = 'error';
