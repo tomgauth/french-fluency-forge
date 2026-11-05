@@ -14,5 +14,5 @@
 
 - Mapping canal Slack -> élève : table `slack_student_channels`. Journal : `flashcard_debrief_runs` (un debrief = une ligne, clé `slack_channel_id` + `slack_message_ts`).
 - Import d'un pack : `select phrases_import_pack(email, 'YYYY-MM-DD THÈME', recall_json, recognition_json)`; cartes au format `[{"fr": "...", "en": "..."}]`. Un run en attente s'importe avec `phrases_import_run(run_id)`.
-- Audios : `select phrases_audio_request(email, 'pack:... - RECALL')` lance la fonction Edge `phrases-audio-backfill` (4 voix par phrase, fichiers `phrases/<id>_v0..3.mp3`).
+- Audios : `select phrases_audio_request(email, 'YYYY-MM-DD THÈME')` lance la fonction Edge `phrases-audio-backfill` (4 voix par phrase, fichiers `phrases/<id>_v0..3.mp3`, recall et recognize en une chaîne, appel direct à ElevenLabs). Un pack à la fois ; résultat dans `net._http_response`.
 - Les liens de partage Fathom de Lilian sont publics : page `fathom.video/share/<token>`, puis `fathom.video/calls/<call_id>/copy_transcript?token=<token>` renvoie `{"html": ...}`.
