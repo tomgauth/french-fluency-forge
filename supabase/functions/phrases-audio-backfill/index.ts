@@ -3,10 +3,10 @@
  * ----------------------
  * Génère côté serveur les audios manquants des phrases d'un élève (4 variantes
  * de voix par phrase, fichiers `phrases/<phrase_id>_v0..3.mp3` dans le bucket
- * `phrases-audio`), en appelant la fonction `french-tts` avec la clé service
- * role. C'est l'équivalent du bouton « Generate missing audio » de la Library,
- * mais déclenchable par un job (SQL `public.phrases_audio_request(...)`, cron,
- * ou curl).
+ * `phrases-audio`), en appelant ElevenLabs directement avec les mêmes réglages
+ * que `french-tts` (clés ELEVENLABS_API_KEY*). C'est l'équivalent du bouton
+ * « Generate missing audio » de la Library, mais déclenchable par un job
+ * (SQL `public.phrases_audio_request(...)`, cron, ou curl).
  *
  * Auth : `Authorization: Bearer <service role>` ou header `x-sync-secret`
  * (le même secret Vault que la synchro Coda, vérifié via
@@ -17,7 +17,7 @@
  *   pack        : tag `pack:...` exact, ou un fragment (sans le préfixe `pack:`) ;
  *                 passer le nom du pack sans suffixe (`2026-11-03 THÈME`) traite
  *                 RECALL et RECOGNIZE en une seule chaîne. Lancer les packs
- *                 l'un après l'autre : la passerelle Edge limite le débit.
+ *                 l'un après l'autre (ElevenLabs limite la concurrence).
  *   phrase_ids  : liste d'IDs de phrases (ignore member/pack)
  *   max_seconds : budget temps d'un appel (défaut 100) ; s'il reste du travail,
  *                 la fonction ré-enfile un appel via le RPC SQL
@@ -38,9 +38,9 @@ const BUCKET = 'phrases-audio';
 const DEFAULT_MAX_SECONDS = 100;
 const MAX_CHAIN = 12;
 const MAX_ATTEMPTS = 6;
-const MAX_RETRY_WAIT_MS = 30_000;
+const MAX_RETRY_WAIT_MS = 45_000;
 const MAX_CONSECUTIVE_FAILURES = 10;
-const PACE_MS = 150;
+const PACE_MS = 100;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,41 +190,81 @@ async function exists(url: string): Promise<boolean> {
   }
 }
 
+function retryHintMs(text: string): number | null {
+  const m = /Retry after (\d+)\s*ms/i.exec(text);
+  return m ? Number(m[1]) + 250 : null;
+}
+
+function elevenLabsKeys(): string[] {
+  const keys: string[] = [];
+  const primary = Deno.env.get('ELEVENLABS_API_KEY');
+  if (primary) keys.push(primary);
+  for (let i = 2; i <= 10; i++) {
+    const k = Deno.env.get(`ELEVENLABS_API_KEY_${i}`);
+    if (k) keys.push(k);
+  }
+  return keys;
+}
+
+/**
+ * Appelle ElevenLabs directement (mêmes réglages que `french-tts`) puis écrit
+ * le fichier final dans le bucket. On n'invoque pas `french-tts` : le runtime
+ * Edge limite fortement les appels de fonction à fonction (« Rate limit
+ * exceeded for trace ... Retry after N ms »).
+ */
 async function generateVariant(
-  supabaseUrl: string,
-  serviceRoleKey: string,
+  supabase: SupabaseClient,
   text: string,
   cacheKey: string,
   voiceId: string,
 ): Promise<void> {
+  const keys = elevenLabsKeys();
+  if (keys.length === 0) throw new Error('ELEVENLABS_API_KEY manquant');
   let lastError = '';
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const res = await fetch(`${supabaseUrl}/functions/v1/french-tts`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text, voiceId, cacheKey, speed: 0.9, stability: 0.6, outputFormat: 'mp3_44100_128' }),
-    });
-    if (res.ok) {
-      // Réponse JSON { cachedUrl } quand le fichier est stocké, sinon audio brut.
-      await res.arrayBuffer();
-      return;
+    let audio: ArrayBuffer | null = null;
+    let waitMs = 1500 * (attempt + 1);
+    for (const key of keys) {
+      let res: Response;
+      try {
+        res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+          method: 'POST',
+          headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            model_id: 'eleven_multilingual_v2',
+            voice_settings: { stability: 0.6, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true, speed: 0.9 },
+          }),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastError = `fetch: ${msg}`;
+        waitMs = retryHintMs(msg) ?? waitMs;
+        break;
+      }
+      if (res.ok) {
+        audio = await res.arrayBuffer();
+        break;
+      }
+      const body = await res.text().catch(() => '');
+      lastError = `elevenlabs ${res.status}: ${body.slice(0, 200)}`;
+      const retryAfter = Number(res.headers.get('Retry-After'));
+      if (retryAfter > 0) waitMs = Math.max(waitMs, retryAfter * 1000);
+      // Clé suivante seulement pour les échecs propres à la clé (quota, auth, débit).
+      if (![401, 402, 404, 429].includes(res.status)) break;
     }
-    const body = await res.text().catch(() => '');
-    lastError = `french-tts ${res.status}: ${body.slice(0, 200)}`;
-    if (![429, 500, 502, 503, 504].includes(res.status)) break;
-    // La passerelle Edge répond « Rate limit exceeded ... Retry after 2009ms » :
-    // on respecte ce délai (plafonné), sinon backoff progressif.
-    const hinted = /Retry after (\d+)\s*ms/i.exec(body)?.[1];
-    const headerSec = Number(res.headers.get('Retry-After'));
-    let waitMs = hinted ? Number(hinted) + 250 : headerSec > 0 ? headerSec * 1000 : 1500 * (attempt + 1);
-    waitMs = Math.min(waitMs, MAX_RETRY_WAIT_MS);
-    await new Promise((r) => setTimeout(r, waitMs));
+    if (audio) {
+      const { error } = await supabase.storage.from(BUCKET).upload(`${cacheKey}.mp3`, new Uint8Array(audio), {
+        contentType: 'audio/mpeg',
+        upsert: true,
+      });
+      if (!error) return;
+      lastError = `storage: ${error.message}`;
+      waitMs = retryHintMs(error.message) ?? waitMs;
+    }
+    await new Promise((r) => setTimeout(r, Math.min(waitMs, MAX_RETRY_WAIT_MS)));
   }
-  throw new Error(lastError || 'french-tts failed');
+  throw new Error(lastError || 'tts failed');
 }
 
 async function run(supabase: SupabaseClient, env: { supabaseUrl: string; serviceRoleKey: string }, p: Params): Promise<Result> {
@@ -271,7 +311,7 @@ async function run(supabase: SupabaseClient, env: { supabaseUrl: string; service
           break;
         }
         try {
-          await generateVariant(env.supabaseUrl, env.serviceRoleKey, text, key, VOICES[v]);
+          await generateVariant(supabase, text, key, VOICES[v]);
           result.variants_generated++;
           consecutiveFailures = 0;
         } catch (err) {
@@ -284,7 +324,7 @@ async function run(supabase: SupabaseClient, env: { supabaseUrl: string; service
             throw new Error(`${MAX_CONSECUTIVE_FAILURES} échecs TTS consécutifs, arrêt`);
           }
         }
-        // Petite pause entre deux invocations pour rester sous la limite de la passerelle.
+        // Petite pause entre deux générations pour ménager ElevenLabs et le storage.
         await new Promise((r) => setTimeout(r, PACE_MS));
       }
       if (result.has_more) break;
