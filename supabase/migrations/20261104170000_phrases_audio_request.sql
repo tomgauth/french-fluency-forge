@@ -54,3 +54,6 @@ $function$;
 
 revoke all on function public.phrases_audio_request(text, text, text, integer) from public, anon, authenticated;
 revoke all on function public.phrases_audio_request(text, text, text) from public, anon, authenticated;
+-- service_role (fonction Edge) doit pouvoir ré-enfiler les continuations.
+grant execute on function public.phrases_audio_request(text, text, text, integer) to service_role;
+grant execute on function public.phrases_audio_request(text, text, text) to service_role;

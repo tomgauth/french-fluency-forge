@@ -177,17 +177,24 @@ async function loadPhrases(supabase: SupabaseClient, p: Params, memberId: string
   });
 }
 
-function publicUrl(supabaseUrl: string, key: string): string {
-  return `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${key}.mp3`;
-}
-
-async function exists(url: string): Promise<boolean> {
-  try {
-    const r = await fetch(url, { method: 'HEAD' });
-    return r.ok;
-  } catch {
-    return false;
+/**
+ * Variantes manquantes (phrase_id -> liste de v), en une requête SQL par lot
+ * de 500 phrases (RPC phrases_audio_missing_variants, lit storage.objects).
+ * Beaucoup plus rapide que des requêtes HEAD une par une (~200 ms chacune).
+ */
+async function missingVariants(supabase: SupabaseClient, phraseIds: string[]): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  for (let i = 0; i < phraseIds.length; i += 500) {
+    const batch = phraseIds.slice(i, i + 500);
+    const { data, error } = await supabase.rpc('phrases_audio_missing_variants', { p_phrase_ids: batch });
+    if (error) throw new Error(`phrases_audio_missing_variants: ${error.message}`);
+    for (const row of (data ?? []) as { phrase_id: string; variant: number }[]) {
+      const list = out.get(row.phrase_id) ?? [];
+      list.push(row.variant);
+      out.set(row.phrase_id, list);
+    }
   }
+  return out;
 }
 
 function retryHintMs(text: string): number | null {
@@ -267,7 +274,7 @@ async function generateVariant(
   throw new Error(lastError || 'tts failed');
 }
 
-async function run(supabase: SupabaseClient, env: { supabaseUrl: string; serviceRoleKey: string }, p: Params): Promise<Result> {
+async function run(supabase: SupabaseClient, p: Params): Promise<Result> {
   const startedAt = Date.now();
   const result: Result = {
     status: 'success',
@@ -293,15 +300,16 @@ async function run(supabase: SupabaseClient, env: { supabaseUrl: string; service
     const outOfTime = () => Date.now() - startedAt > (p.max_seconds ?? DEFAULT_MAX_SECONDS) * 1000;
     let consecutiveFailures = 0;
 
+    const missing = await missingVariants(supabase, phrases.map((ph) => ph.id));
+    result.variants_existing = phrases.length * VOICES.length - [...missing.values()].reduce((n, l) => n + l.length, 0);
+
     for (const phrase of phrases) {
+      const todo = missing.get(phrase.id);
+      if (!todo || todo.length === 0) continue;
       const text = (phrase.canonical_fr || phrase.transcript_fr || '').trim();
       if (!text) continue;
-      for (let v = 0; v < VOICES.length; v++) {
+      for (const v of todo) {
         const key = `phrases/${phrase.id}_v${v}`;
-        if (await exists(publicUrl(env.supabaseUrl, key))) {
-          result.variants_existing++;
-          continue;
-        }
         if (p.dry_run) {
           result.variants_generated++;
           continue;
@@ -368,10 +376,10 @@ Deno.serve(async (req: Request) => {
 
   const params = await parseParams(req);
   if (params.async) {
-    const work = run(supabase, { supabaseUrl, serviceRoleKey }, params);
+    const work = run(supabase, params);
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(work);
     return json({ status: 'accepted', member_email: params.member_email, pack: params.pack }, 202);
   }
-  const result = await run(supabase, { supabaseUrl, serviceRoleKey }, params);
+  const result = await run(supabase, params);
   return json(result, result.status === 'error' ? 500 : 200);
 });
