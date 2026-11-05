@@ -257,6 +257,8 @@ async function generateVariant(
       lastError = `elevenlabs ${res.status}: ${body.slice(0, 200)}`;
       const retryAfter = Number(res.headers.get('Retry-After'));
       if (retryAfter > 0) waitMs = Math.max(waitMs, retryAfter * 1000);
+      // Texte refusé (400) ou bloqué par la modération (403) : inutile de réessayer.
+      if (res.status === 400 || res.status === 403) throw new Error(lastError);
       // Clé suivante seulement pour les échecs propres à la clé (quota, auth, débit).
       if (![401, 402, 404, 429].includes(res.status)) break;
     }
